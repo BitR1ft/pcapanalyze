@@ -1,0 +1,124 @@
+Project Report: Development of a Full-Fledged PCAP/PCAPNG File Analyzer with GUI
+1. Title
+PCAP/PCAPNG File Analyzer: A Comprehensive Network Traffic Analysis Tool with Graphical User Interface
+2. Abstract
+This project report outlines the design, development, and implementation of a full-fledged PCAP/PCAPNG file analyzer tool. The tool is designed to parse, analyze, and visualize network packet capture files in PCAP or PCAPNG formats, providing detailed insights into network traffic, connections, and extracted artifacts. Built with a user-friendly Graphical User Interface (GUI), it aims to assist network engineers, security analysts, and developers in diagnosing network issues, detecting anomalies, and extracting embedded files from captured traffic. The project incorporates essential features for basic analysis and advanced extra features for enhanced functionality, such as real-time statistics, filtering, and export options. The implementation leverages Python for backend processing and a GUI framework for frontend interaction, ensuring cross-platform compatibility.
+3. Introduction
+3.1 Background
+Packet Capture (PCAP) and its next-generation variant (PCAPNG) are standard file formats used to store network traffic data captured by tools like tcpdump or Wireshark. These files contain raw packet data, including headers, payloads, and metadata, which can reveal critical information about network communications, such as IP addresses, protocols, timestamps, and data exchanges.
+Analyzing PCAP/PCAPNG files is essential for tasks like troubleshooting network problems, investigating security incidents (e.g., malware infections or data exfiltration), and performance optimization. Existing tools like Wireshark provide robust analysis, but building a custom analyzer allows for tailored features, educational value, and integration with other systems.
+3.2 Problem Statement
+The user requires a tool that:
+
+Characterizes all information in PCAP/PCAPNG files.
+Details every connection (e.g., TCP/UDP sessions) and events within them.
+Extracts embedded files (e.g., images, documents) from the traffic.
+Includes a GUI for intuitive interaction.
+Incorporates both necessary core features and additional advanced features.
+
+This project addresses these needs by creating a standalone application that processes PCAP/PCAPNG files efficiently.
+3.3 Scope
+The tool will support offline analysis of pre-captured files (no live capture). It will handle common protocols (e.g., Ethernet, IP, TCP, UDP, HTTP, DNS) and provide visualizations. The scope excludes real-time capturing or extremely large-scale distributed analysis.
+4. Objectives
+
+To develop a parser that accurately reads and interprets PCAP/PCAPNG file structures.
+To analyze network connections, providing summaries of flows, packets, and anomalies.
+To extract and reconstruct files from packet payloads.
+To implement a GUI for file loading, viewing, filtering, and exporting results.
+To include core features for standard analysis and extra features for advanced use cases.
+
+5. Features
+The tool will include required features (essential for a basic full-fledged analyzer) and extra features (enhancements for usability and depth).
+5.1 Required Features
+These form the core functionality to make the tool a complete PCAP/PCAPNG analyzer:
+
+File Parsing and Loading: Support for reading PCAP and PCAPNG files, handling global headers, packet headers, and enhanced packet blocks (in PCAPNG). Display basic file metadata like capture duration, total packets, and interface details.
+Packet Dissection: Break down each packet into layers (e.g., Link Layer, Network Layer, Transport Layer, Application Layer). Show detailed fields such as source/destination MAC/IP addresses, ports, timestamps, packet length, and protocol-specific data (e.g., HTTP methods, DNS queries).
+Connection Tracking: Identify and group packets into connections or flows (e.g., TCP streams based on 4-tuple: source IP/port, destination IP/port). For each connection, provide:
+Start/end timestamps.
+Total packets, bytes transferred (uplink/downlink).
+Sequence of events (e.g., SYN, ACK, FIN for TCP; or UDP datagram exchanges).
+State transitions (e.g., established, closed, half-open).
+Anomalies like retransmissions, out-of-order packets, or packet loss indicators.
+
+File Extraction: Reassemble and extract embedded files from protocols like HTTP, FTP, SMTP, or SMB. Support common file types (e.g., images, PDFs, executables) and save them to disk with original filenames where possible.
+Search and Filtering: Allow users to filter packets by criteria like protocol, IP address, port, or keywords in payloads. Support basic searches within the GUI.
+Statistics and Summaries: Generate overviews such as protocol hierarchy (e.g., % of TCP vs. UDP), top talkers (IPs/ports with most traffic), and bandwidth usage graphs.
+Export Capabilities: Export analyzed data to CSV, JSON, or filtered PCAP subsets for further use.
+
+5.2 Extra Features
+These add value beyond basics, making the tool more versatile:
+
+Visualization Tools: Interactive graphs for traffic timelines, connection diagrams (e.g., flow graphs), and packet distribution heatmaps. Use libraries like Matplotlib for charts.
+Anomaly Detection: Basic rules to flag suspicious activities, such as port scans, unusual payload sizes, or known malicious patterns (e.g., via simple signature matching).
+Protocol-Specific Decoders: Advanced decoding for protocols like TLS (handshake details without decryption), VoIP (e.g., SIP/RTP call flows), or IoT protocols (e.g., MQTT).
+Batch Processing: Analyze multiple files at once, comparing traffic across captures.
+Custom Scripting: Allow users to write and run custom Python scripts for extended analysis (e.g., plugin system).
+Report Generation: Automatically generate PDF/HTML reports summarizing findings, including screenshots of GUI views.
+Theme and Accessibility Options: Dark/light mode, zoom controls, and keyboard shortcuts for better user experience.
+Integration with External Tools: Options to open selected packets in Wireshark or export to tools like Suricata for IDS analysis.
+Performance Optimizations: Multi-threading for large files, memory-efficient parsing, and progress indicators during loading.
+Logging and Debugging: Detailed logs of analysis steps, with options to view raw hex dumps or ASCII representations of payloads.
+
+6. System Design
+6.1 Architecture
+
+Backend: Handles file parsing, analysis, and data processing.
+Frontend (GUI): Provides user interaction for input, display, and control.
+Modular Design: Use MVC (Model-View-Controller) pattern for separation of concerns.
+Model: Data structures for packets, connections, and extracted files.
+View: GUI elements like trees, tables, and graphs.
+Controller: Logic for user actions (e.g., load file, apply filter).
+
+
+6.2 Data Flow
+
+User selects and loads a PCAP/PCAPNG file via GUI.
+Backend parses the file, builds packet list and connection maps.
+GUI displays hierarchical views (e.g., packet list, details pane, hex view – similar to Wireshark's three-pane layout).
+User interacts: filters, extracts files, views stats.
+Outputs: Exports or reports generated on demand.
+
+6.3 Technologies Used
+
+Programming Language: Python 3.x (for ease of development and library support).
+Packet Analysis Library: Scapy (for parsing and dissecting packets) or dpkt (lighter alternative).
+GUI Framework: PyQt5 or Tkinter (PyQt for more polished, modern interface; Tkinter for simplicity).
+Additional Libraries:
+Pandas for data manipulation and statistics.
+Matplotlib or Plotly for visualizations.
+PyShark (Wireshark wrapper) if deeper integration needed.
+Multiprocessing for performance.
+
+Development Tools: Git for version control, Virtualenv for dependency management.
+Testing: Unit tests with pytest; sample PCAP files from public repositories (e.g., Wireshark samples).
+
+7. Implementation Plan
+7.1 Phases
+
+Research and Planning (1-2 weeks): Study PCAP/PCAPNG specs (RFCs, libpcap docs). Prototype basic parser.
+Backend Development (3-4 weeks): Implement parsing, connection tracking, and file extraction. Test with sample files.
+GUI Development (2-3 weeks): Build interface with file browser, packet viewer, and feature buttons.
+Integration and Extra Features (2 weeks): Add visualizations, anomaly detection, and optimizations.
+Testing and Debugging (1-2 weeks): Unit/integration tests, handle edge cases (e.g., corrupted files, large captures).
+Documentation and Deployment (1 week): Write user manual, package as executable (using PyInstaller).
+
+7.2 GUI Description
+
+Main Window: Split into:
+Top: Menu bar (File: Load/Export; View: Filters/Stats; Help).
+Left: Packet list (tree view with columns: No., Time, Source, Destination, Protocol, Length, Info).
+Middle: Packet details (expandable tree of layers/fields).
+Bottom: Hex/ASCII view of selected packet.
+
+Additional Tabs: Connections tab (list of flows with details), Statistics tab (graphs), Extracted Files tab (list with preview/save options).
+User Interactions: Drag-and-drop file loading, right-click menus for quick actions, search bar for real-time filtering.
+
+7.3 Challenges and Solutions
+
+Large Files: Use lazy loading (parse on-demand) to avoid memory issues.
+Complex Protocols: Limit to common ones initially; extend via plugins.
+Cross-Platform: Test on Windows/Linux/macOS.
+
+8. Conclusion
+This PCAP/PCAPNG analyzer project will deliver a powerful, user-friendly tool for network traffic analysis. By including core features for detailed inspection and extra features for advanced insights, it meets the user's requirements while providing educational value in computer networks. Future enhancements could include live capture or cloud integration. The total estimated development time is 10-14 weeks for a solo developer.
