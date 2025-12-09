@@ -2,8 +2,6 @@
 Traffic visualization module
 Creates charts and graphs for network traffic analysis
 """
-import matplotlib
-matplotlib.use('Agg')  # Use non-interactive backend
 import matplotlib.pyplot as plt
 from typing import List, Dict, Any
 import os
@@ -21,6 +19,8 @@ class TrafficVisualizer:
     def create_protocol_distribution_pie(self, stats: Dict[str, Any], filename: str = None) -> str:
         """Create pie chart of protocol distribution"""
         try:
+            import matplotlib
+            matplotlib.use('Agg')  # Use non-interactive backend locally
             if 'protocols' not in stats or not stats['protocols']:
                 return None
             

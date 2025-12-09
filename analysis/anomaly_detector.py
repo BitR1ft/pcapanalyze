@@ -239,9 +239,10 @@ class AnomalyDetector:
         for i, pkt in enumerate(packets):
             if hasattr(pkt, 'Raw'):
                 payload = bytes(pkt['Raw'])
+                payload_lower = payload.lower()  # Convert once
                 
                 for keyword in keywords:
-                    if keyword in payload.lower():
+                    if keyword in payload_lower:
                         # Check if it's not HTTPS (port 443)
                         is_https = False
                         if hasattr(pkt, 'TCP'):

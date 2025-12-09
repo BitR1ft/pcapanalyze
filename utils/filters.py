@@ -12,7 +12,10 @@ class PacketFilter:
     
     def add_protocol_filter(self, protocol: str):
         """Filter by protocol (TCP, UDP, ICMP, etc.)"""
-        self.filters.append(lambda pkt: protocol.upper() in str(pkt.summary()).upper())
+        protocol_upper = protocol.upper()
+        def protocol_match(pkt):
+            return hasattr(pkt, protocol_upper) or protocol_upper in pkt.sprintf('%IP.proto%')
+        self.filters.append(protocol_match)
     
     def add_ip_filter(self, ip_address: str, src=True, dst=True):
         """Filter by IP address (source and/or destination)"""

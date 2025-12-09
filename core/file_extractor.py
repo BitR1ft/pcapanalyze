@@ -58,7 +58,7 @@ class FileExtractor:
             if not (hasattr(pkt, 'TCP') and hasattr(pkt, 'Raw')):
                 continue
             
-            payload = bytes(pkt['Raw']).decode('utf-8', errors='ignore')
+            payload = bytes(pkt['Raw']).decode('utf-8', errors='replace')
             
             # HTTP Request
             if any(method in payload[:50] for method in ['GET ', 'POST ', 'PUT ', 'DELETE ', 'HEAD ']):
@@ -112,7 +112,7 @@ class FileExtractor:
         """Parse HTTP response"""
         parts = payload.split('\r\n\r\n', 1)
         header_part = parts[0]
-        body = parts[1].encode('utf-8', errors='ignore') if len(parts) > 1 else b''
+        body = parts[1].encode('utf-8', errors='replace') if len(parts) > 1 else b''
         
         lines = header_part.split('\r\n')
         status_line = lines[0].split(' ', 2)
@@ -261,7 +261,7 @@ class FileExtractor:
                 if (hasattr(pkt['TCP'], 'dport') and pkt['TCP'].dport == 25) or \
                    (hasattr(pkt['TCP'], 'sport') and pkt['TCP'].sport == 25):
                     
-                    payload = bytes(pkt['Raw']).decode('utf-8', errors='ignore')
+                    payload = bytes(pkt['Raw']).decode('utf-8', errors='replace')
                     
                     # Look for base64 encoded attachments
                     if 'Content-Transfer-Encoding: base64' in payload:
