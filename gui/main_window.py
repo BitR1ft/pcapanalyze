@@ -1,0 +1,651 @@
+"""
+Main GUI window for PCAP Analyzer
+Implements the three-pane layout similar to Wireshark
+"""
+import sys
+from PyQt5.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout, 
+                             QHBoxLayout, QSplitter, QMenuBar, QMenu, QAction,
+                             QFileDialog, QMessageBox, QStatusBar, QTabWidget,
+                             QTableWidget, QTableWidgetItem, QTextEdit, QLabel,
+                             QTreeWidget, QTreeWidgetItem, QProgressBar, QPushButton,
+                             QLineEdit, QComboBox)
+from PyQt5.QtCore import Qt, QThread, pyqtSignal
+from PyQt5.QtGui import QFont, QColor
+import os
+from pathlib import Path
+
+# Add parent directory to path
+sys.path.insert(0, str(Path(__file__).parent.parent))
+
+from core.parser import PCAPParser
+from core.dissector import PacketDissector
+from core.connection_tracker import ConnectionTracker
+from core.file_extractor import FileExtractor
+from core.statistics import StatisticsGenerator
+from analysis.anomaly_detector import AnomalyDetector
+from analysis.visualizer import TrafficVisualizer
+from utils.logger import logger
+from utils.filters import PacketFilter
+from utils.exporters import Exporter, ReportGenerator
+
+class AnalysisThread(QThread):
+    """Background thread for packet analysis"""
+    progress = pyqtSignal(int, str)
+    finished = pyqtSignal(dict)
+    error = pyqtSignal(str)
+    
+    def __init__(self, filename):
+        super().__init__()
+        self.filename = filename
+    
+    def run(self):
+        try:
+            self.progress.emit(10, "Loading PCAP file...")
+            
+            # Parse file
+            parser = PCAPParser(self.filename)
+            if not parser.load_file():
+                self.error.emit("Failed to load PCAP file")
+                return
+            
+            packets = parser.get_packets()
+            file_info = parser.get_file_info()
+            
+            self.progress.emit(30, f"Analyzing {len(packets)} packets...")
+            
+            # Analyze connections
+            tracker = ConnectionTracker()
+            connections = tracker.analyze_connections(packets)
+            
+            self.progress.emit(50, "Generating statistics...")
+            
+            # Generate statistics
+            stats_gen = StatisticsGenerator()
+            stats = stats_gen.generate_statistics(packets, connections)
+            
+            self.progress.emit(70, "Detecting anomalies...")
+            
+            # Detect anomalies
+            detector = AnomalyDetector()
+            anomalies = detector.detect_anomalies(packets, connections)
+            
+            self.progress.emit(90, "Extracting files...")
+            
+            # Extract files
+            extractor = FileExtractor()
+            extracted_files = extractor.extract_files(packets)
+            
+            self.progress.emit(100, "Analysis complete!")
+            
+            # Return all results
+            results = {
+                'parser': parser,
+                'packets': packets,
+                'file_info': file_info,
+                'connections': connections,
+                'statistics': stats,
+                'anomalies': anomalies,
+                'extracted_files': extracted_files
+            }
+            
+            self.finished.emit(results)
+            
+        except Exception as e:
+            logger.error(f"Analysis error: {e}")
+            self.error.emit(str(e))
+
+class PCAPAnalyzerGUI(QMainWindow):
+    """Main GUI window"""
+    
+    def __init__(self):
+        super().__init__()
+        self.current_file = None
+        self.packets = []
+        self.connections = []
+        self.statistics = {}
+        self.anomalies = []
+        self.extracted_files = []
+        self.parser = None
+        self.current_theme = 'light'
+        
+        self.init_ui()
+    
+    def init_ui(self):
+        """Initialize the user interface"""
+        self.setWindowTitle('PCAP/PCAPNG Analyzer - Network Traffic Analysis Tool')
+        self.setGeometry(100, 100, 1400, 900)
+        
+        # Create menu bar
+        self.create_menu_bar()
+        
+        # Create main widget and layout
+        main_widget = QWidget()
+        self.setCentralWidget(main_widget)
+        main_layout = QVBoxLayout(main_widget)
+        
+        # Create toolbar
+        toolbar_layout = QHBoxLayout()
+        
+        # File open button
+        open_btn = QPushButton('Open PCAP File')
+        open_btn.clicked.connect(self.open_file)
+        toolbar_layout.addWidget(open_btn)
+        
+        # Filter input
+        toolbar_layout.addWidget(QLabel('Filter:'))
+        self.filter_input = QLineEdit()
+        self.filter_input.setPlaceholderText('e.g., TCP, 192.168.1.1, port 80')
+        toolbar_layout.addWidget(self.filter_input)
+        
+        filter_btn = QPushButton('Apply Filter')
+        filter_btn.clicked.connect(self.apply_filter)
+        toolbar_layout.addWidget(filter_btn)
+        
+        clear_filter_btn = QPushButton('Clear Filter')
+        clear_filter_btn.clicked.connect(self.clear_filter)
+        toolbar_layout.addWidget(clear_filter_btn)
+        
+        toolbar_layout.addStretch()
+        main_layout.addLayout(toolbar_layout)
+        
+        # Create tab widget
+        self.tabs = QTabWidget()
+        main_layout.addWidget(self.tabs)
+        
+        # Packets tab (main three-pane view)
+        self.packets_tab = self.create_packets_tab()
+        self.tabs.addTab(self.packets_tab, "Packets")
+        
+        # Connections tab
+        self.connections_tab = self.create_connections_tab()
+        self.tabs.addTab(self.connections_tab, "Connections")
+        
+        # Statistics tab
+        self.statistics_tab = self.create_statistics_tab()
+        self.tabs.addTab(self.statistics_tab, "Statistics")
+        
+        # Anomalies tab
+        self.anomalies_tab = self.create_anomalies_tab()
+        self.tabs.addTab(self.anomalies_tab, "Anomalies")
+        
+        # Extracted Files tab
+        self.files_tab = self.create_files_tab()
+        self.tabs.addTab(self.files_tab, "Extracted Files")
+        
+        # Status bar
+        self.status_bar = QStatusBar()
+        self.setStatusBar(self.status_bar)
+        self.status_bar.showMessage('Ready')
+        
+        # Progress bar
+        self.progress_bar = QProgressBar()
+        self.progress_bar.setVisible(False)
+        self.status_bar.addPermanentWidget(self.progress_bar)
+    
+    def create_menu_bar(self):
+        """Create menu bar"""
+        menubar = self.menuBar()
+        
+        # File menu
+        file_menu = menubar.addMenu('File')
+        
+        open_action = QAction('Open PCAP File...', self)
+        open_action.setShortcut('Ctrl+O')
+        open_action.triggered.connect(self.open_file)
+        file_menu.addAction(open_action)
+        
+        file_menu.addSeparator()
+        
+        export_menu = file_menu.addMenu('Export')
+        
+        export_packets_action = QAction('Export Packets to CSV', self)
+        export_packets_action.triggered.connect(self.export_packets)
+        export_menu.addAction(export_packets_action)
+        
+        export_connections_action = QAction('Export Connections to CSV', self)
+        export_connections_action.triggered.connect(self.export_connections)
+        export_menu.addAction(export_connections_action)
+        
+        export_stats_action = QAction('Export Statistics to CSV', self)
+        export_stats_action.triggered.connect(self.export_statistics)
+        export_menu.addAction(export_stats_action)
+        
+        file_menu.addSeparator()
+        
+        exit_action = QAction('Exit', self)
+        exit_action.setShortcut('Ctrl+Q')
+        exit_action.triggered.connect(self.close)
+        file_menu.addAction(exit_action)
+        
+        # View menu
+        view_menu = menubar.addMenu('View')
+        
+        theme_menu = view_menu.addMenu('Theme')
+        
+        light_theme_action = QAction('Light Theme', self)
+        light_theme_action.triggered.connect(lambda: self.change_theme('light'))
+        theme_menu.addAction(light_theme_action)
+        
+        dark_theme_action = QAction('Dark Theme', self)
+        dark_theme_action.triggered.connect(lambda: self.change_theme('dark'))
+        theme_menu.addAction(dark_theme_action)
+        
+        # Analysis menu
+        analysis_menu = menubar.addMenu('Analysis')
+        
+        visualize_action = QAction('Create Visualizations', self)
+        visualize_action.triggered.connect(self.create_visualizations)
+        analysis_menu.addAction(visualize_action)
+        
+        report_action = QAction('Generate Report', self)
+        report_action.triggered.connect(self.generate_report)
+        analysis_menu.addAction(report_action)
+        
+        # Help menu
+        help_menu = menubar.addMenu('Help')
+        
+        about_action = QAction('About', self)
+        about_action.triggered.connect(self.show_about)
+        help_menu.addAction(about_action)
+    
+    def create_packets_tab(self):
+        """Create the main packets view with three panes"""
+        widget = QWidget()
+        layout = QVBoxLayout(widget)
+        
+        # Create splitter for three panes
+        splitter = QSplitter(Qt.Vertical)
+        
+        # Top pane: Packet list
+        self.packet_table = QTableWidget()
+        self.packet_table.setColumnCount(7)
+        self.packet_table.setHorizontalHeaderLabels(['No.', 'Time', 'Source', 'Destination', 'Protocol', 'Length', 'Info'])
+        self.packet_table.setSelectionBehavior(QTableWidget.SelectRows)
+        self.packet_table.setSelectionMode(QTableWidget.SingleSelection)
+        self.packet_table.itemSelectionChanged.connect(self.on_packet_selected)
+        splitter.addWidget(self.packet_table)
+        
+        # Middle pane: Packet details
+        self.packet_details = QTreeWidget()
+        self.packet_details.setHeaderLabels(['Field', 'Value'])
+        splitter.addWidget(self.packet_details)
+        
+        # Bottom pane: Hex view
+        self.hex_view = QTextEdit()
+        self.hex_view.setReadOnly(True)
+        self.hex_view.setFont(QFont('Courier', 9))
+        splitter.addWidget(self.hex_view)
+        
+        # Set splitter sizes
+        splitter.setSizes([300, 200, 150])
+        
+        layout.addWidget(splitter)
+        return widget
+    
+    def create_connections_tab(self):
+        """Create connections view"""
+        widget = QWidget()
+        layout = QVBoxLayout(widget)
+        
+        self.connections_table = QTableWidget()
+        self.connections_table.setColumnCount(10)
+        self.connections_table.setHorizontalHeaderLabels([
+            'Source IP', 'Source Port', 'Destination IP', 'Destination Port',
+            'Protocol', 'Packets', 'Bytes', 'Duration', 'State', 'Anomalies'
+        ])
+        layout.addWidget(self.connections_table)
+        
+        return widget
+    
+    def create_statistics_tab(self):
+        """Create statistics view"""
+        widget = QWidget()
+        layout = QVBoxLayout(widget)
+        
+        self.statistics_text = QTextEdit()
+        self.statistics_text.setReadOnly(True)
+        layout.addWidget(self.statistics_text)
+        
+        return widget
+    
+    def create_anomalies_tab(self):
+        """Create anomalies view"""
+        widget = QWidget()
+        layout = QVBoxLayout(widget)
+        
+        self.anomalies_table = QTableWidget()
+        self.anomalies_table.setColumnCount(4)
+        self.anomalies_table.setHorizontalHeaderLabels(['Type', 'Severity', 'Description', 'Details'])
+        layout.addWidget(self.anomalies_table)
+        
+        return widget
+    
+    def create_files_tab(self):
+        """Create extracted files view"""
+        widget = QWidget()
+        layout = QVBoxLayout(widget)
+        
+        self.files_table = QTableWidget()
+        self.files_table.setColumnCount(5)
+        self.files_table.setHorizontalHeaderLabels(['Filename', 'Size', 'Source', 'Content Type', 'Path'])
+        layout.addWidget(self.files_table)
+        
+        return widget
+    
+    def open_file(self):
+        """Open a PCAP file"""
+        filename, _ = QFileDialog.getOpenFileName(
+            self, 
+            'Open PCAP File', 
+            '', 
+            'PCAP Files (*.pcap *.pcapng *.cap);;All Files (*.*)'
+        )
+        
+        if filename:
+            self.load_file(filename)
+    
+    def load_file(self, filename):
+        """Load and analyze a PCAP file"""
+        self.current_file = filename
+        self.status_bar.showMessage(f'Loading {os.path.basename(filename)}...')
+        self.progress_bar.setVisible(True)
+        self.progress_bar.setValue(0)
+        
+        # Start analysis in background thread
+        self.analysis_thread = AnalysisThread(filename)
+        self.analysis_thread.progress.connect(self.on_analysis_progress)
+        self.analysis_thread.finished.connect(self.on_analysis_finished)
+        self.analysis_thread.error.connect(self.on_analysis_error)
+        self.analysis_thread.start()
+    
+    def on_analysis_progress(self, value, message):
+        """Handle analysis progress updates"""
+        self.progress_bar.setValue(value)
+        self.status_bar.showMessage(message)
+    
+    def on_analysis_finished(self, results):
+        """Handle analysis completion"""
+        self.parser = results['parser']
+        self.packets = results['packets']
+        self.connections = results['connections']
+        self.statistics = results['statistics']
+        self.anomalies = results['anomalies']
+        self.extracted_files = results['extracted_files']
+        
+        # Update all views
+        self.update_packet_list()
+        self.update_connections_view()
+        self.update_statistics_view()
+        self.update_anomalies_view()
+        self.update_files_view()
+        
+        self.progress_bar.setVisible(False)
+        self.status_bar.showMessage(f'Loaded {len(self.packets)} packets from {os.path.basename(self.current_file)}')
+    
+    def on_analysis_error(self, error_message):
+        """Handle analysis errors"""
+        self.progress_bar.setVisible(False)
+        self.status_bar.showMessage('Error loading file')
+        QMessageBox.critical(self, 'Error', f'Failed to load file:\n{error_message}')
+    
+    def update_packet_list(self):
+        """Update the packet list table"""
+        self.packet_table.setRowCount(len(self.packets))
+        
+        for i, pkt in enumerate(self.packets):
+            summary = self.parser.get_packet_summary(i)
+            
+            self.packet_table.setItem(i, 0, QTableWidgetItem(str(i + 1)))
+            self.packet_table.setItem(i, 1, QTableWidgetItem(f"{summary.get('time', 0):.6f}"))
+            self.packet_table.setItem(i, 2, QTableWidgetItem(summary.get('src_ip', summary.get('src_mac', ''))))
+            self.packet_table.setItem(i, 3, QTableWidgetItem(summary.get('dst_ip', summary.get('dst_mac', ''))))
+            self.packet_table.setItem(i, 4, QTableWidgetItem(summary.get('transport', 'N/A')))
+            self.packet_table.setItem(i, 5, QTableWidgetItem(str(summary.get('length', 0))))
+            self.packet_table.setItem(i, 6, QTableWidgetItem(summary.get('summary', '')))
+        
+        self.packet_table.resizeColumnsToContents()
+    
+    def update_connections_view(self):
+        """Update connections table"""
+        self.connections_table.setRowCount(len(self.connections))
+        
+        for i, conn in enumerate(self.connections):
+            self.connections_table.setItem(i, 0, QTableWidgetItem(conn['src_ip']))
+            self.connections_table.setItem(i, 1, QTableWidgetItem(str(conn['src_port'])))
+            self.connections_table.setItem(i, 2, QTableWidgetItem(conn['dst_ip']))
+            self.connections_table.setItem(i, 3, QTableWidgetItem(str(conn['dst_port'])))
+            self.connections_table.setItem(i, 4, QTableWidgetItem(conn['protocol']))
+            self.connections_table.setItem(i, 5, QTableWidgetItem(str(conn['packets'])))
+            self.connections_table.setItem(i, 6, QTableWidgetItem(str(conn['bytes_total'])))
+            self.connections_table.setItem(i, 7, QTableWidgetItem(f"{conn['duration']:.2f}s"))
+            self.connections_table.setItem(i, 8, QTableWidgetItem(conn['state']))
+            self.connections_table.setItem(i, 9, QTableWidgetItem(str(conn['anomalies'])))
+        
+        self.connections_table.resizeColumnsToContents()
+    
+    def update_statistics_view(self):
+        """Update statistics view"""
+        text = "NETWORK TRAFFIC STATISTICS\n"
+        text += "=" * 80 + "\n\n"
+        
+        if 'general' in self.statistics:
+            text += "General Statistics:\n"
+            text += "-" * 80 + "\n"
+            for key, value in self.statistics['general'].items():
+                text += f"{key}: {value}\n"
+            text += "\n"
+        
+        if 'protocols' in self.statistics:
+            text += "Protocol Distribution:\n"
+            text += "-" * 80 + "\n"
+            for proto, data in self.statistics['protocols'].items():
+                if isinstance(data, dict):
+                    text += f"{proto}: {data.get('packets', 0)} packets ({data.get('packet_percentage', 0):.2f}%)\n"
+            text += "\n"
+        
+        if 'top_talkers' in self.statistics and self.statistics['top_talkers']:
+            text += "Top 10 Talkers:\n"
+            text += "-" * 80 + "\n"
+            for i, talker in enumerate(self.statistics['top_talkers'][:10], 1):
+                text += f"{i}. {talker['ip']}: {talker['total_bytes']:,} bytes\n"
+            text += "\n"
+        
+        self.statistics_text.setText(text)
+    
+    def update_anomalies_view(self):
+        """Update anomalies table"""
+        self.anomalies_table.setRowCount(len(self.anomalies))
+        
+        for i, anomaly in enumerate(self.anomalies):
+            self.anomalies_table.setItem(i, 0, QTableWidgetItem(anomaly['type']))
+            
+            severity_item = QTableWidgetItem(anomaly['severity'])
+            if anomaly['severity'] == 'CRITICAL':
+                severity_item.setBackground(QColor(255, 200, 200))
+            elif anomaly['severity'] == 'HIGH':
+                severity_item.setBackground(QColor(255, 230, 200))
+            elif anomaly['severity'] == 'MEDIUM':
+                severity_item.setBackground(QColor(255, 255, 200))
+            self.anomalies_table.setItem(i, 1, severity_item)
+            
+            self.anomalies_table.setItem(i, 2, QTableWidgetItem(anomaly['description']))
+            self.anomalies_table.setItem(i, 3, QTableWidgetItem(str(anomaly.get('details', ''))))
+        
+        self.anomalies_table.resizeColumnsToContents()
+    
+    def update_files_view(self):
+        """Update extracted files table"""
+        self.files_table.setRowCount(len(self.extracted_files))
+        
+        for i, file_info in enumerate(self.extracted_files):
+            self.files_table.setItem(i, 0, QTableWidgetItem(file_info['filename']))
+            self.files_table.setItem(i, 1, QTableWidgetItem(str(file_info['size'])))
+            self.files_table.setItem(i, 2, QTableWidgetItem(file_info['source']))
+            self.files_table.setItem(i, 3, QTableWidgetItem(file_info.get('content_type', 'N/A')))
+            self.files_table.setItem(i, 4, QTableWidgetItem(file_info['filepath']))
+        
+        self.files_table.resizeColumnsToContents()
+    
+    def on_packet_selected(self):
+        """Handle packet selection"""
+        selected_items = self.packet_table.selectedItems()
+        if not selected_items:
+            return
+        
+        row = selected_items[0].row()
+        if row < len(self.packets):
+            pkt = self.packets[row]
+            
+            # Update packet details
+            self.packet_details.clear()
+            dissection = PacketDissector.dissect_packet(pkt)
+            
+            for layer in dissection['layers']:
+                layer_item = QTreeWidgetItem([layer['name'], ''])
+                for field_name, field_value in layer['fields'].items():
+                    field_item = QTreeWidgetItem([field_name, str(field_value)])
+                    layer_item.addChild(field_item)
+                self.packet_details.addTopLevelItem(layer_item)
+                layer_item.setExpanded(True)
+            
+            # Update hex view
+            hex_text = self.format_hex_dump(bytes(pkt))
+            self.hex_view.setText(hex_text)
+    
+    def format_hex_dump(self, data):
+        """Format bytes as hex dump"""
+        hex_lines = []
+        for i in range(0, len(data), 16):
+            chunk = data[i:i+16]
+            hex_part = ' '.join(f'{b:02x}' for b in chunk)
+            ascii_part = ''.join(chr(b) if 32 <= b < 127 else '.' for b in chunk)
+            hex_lines.append(f'{i:04x}  {hex_part:<48}  {ascii_part}')
+        return '\n'.join(hex_lines)
+    
+    def apply_filter(self):
+        """Apply filter to packet list"""
+        filter_text = self.filter_input.text().strip()
+        if not filter_text or not self.packets:
+            return
+        
+        # Simple filtering - can be enhanced
+        for row in range(self.packet_table.rowCount()):
+            show_row = False
+            for col in range(self.packet_table.columnCount()):
+                item = self.packet_table.item(row, col)
+                if item and filter_text.lower() in item.text().lower():
+                    show_row = True
+                    break
+            self.packet_table.setRowHidden(row, not show_row)
+    
+    def clear_filter(self):
+        """Clear packet filter"""
+        self.filter_input.clear()
+        for row in range(self.packet_table.rowCount()):
+            self.packet_table.setRowHidden(row, False)
+    
+    def export_packets(self):
+        """Export packets to CSV"""
+        if not self.packets:
+            QMessageBox.warning(self, 'Warning', 'No packets loaded')
+            return
+        
+        filename, _ = QFileDialog.getSaveFileName(self, 'Export Packets', '', 'CSV Files (*.csv)')
+        if filename:
+            Exporter.export_packets_to_csv(self.packets, filename)
+            QMessageBox.information(self, 'Success', f'Packets exported to {filename}')
+    
+    def export_connections(self):
+        """Export connections to CSV"""
+        if not self.connections:
+            QMessageBox.warning(self, 'Warning', 'No connections available')
+            return
+        
+        filename, _ = QFileDialog.getSaveFileName(self, 'Export Connections', '', 'CSV Files (*.csv)')
+        if filename:
+            Exporter.export_connections_to_csv(self.connections, filename)
+            QMessageBox.information(self, 'Success', f'Connections exported to {filename}')
+    
+    def export_statistics(self):
+        """Export statistics to CSV"""
+        if not self.statistics:
+            QMessageBox.warning(self, 'Warning', 'No statistics available')
+            return
+        
+        filename, _ = QFileDialog.getSaveFileName(self, 'Export Statistics', '', 'CSV Files (*.csv)')
+        if filename:
+            Exporter.export_statistics_to_csv(self.statistics, filename)
+            QMessageBox.information(self, 'Success', f'Statistics exported to {filename}')
+    
+    def create_visualizations(self):
+        """Create traffic visualizations"""
+        if not self.packets:
+            QMessageBox.warning(self, 'Warning', 'No packets loaded')
+            return
+        
+        visualizer = TrafficVisualizer()
+        viz_files = visualizer.create_all_visualizations(self.packets, self.connections, self.statistics)
+        
+        msg = f"Created {len(viz_files)} visualizations:\n\n"
+        for name, path in viz_files.items():
+            msg += f"{name}: {path}\n"
+        
+        QMessageBox.information(self, 'Visualizations Created', msg)
+    
+    def generate_report(self):
+        """Generate analysis report"""
+        if not self.packets:
+            QMessageBox.warning(self, 'Warning', 'No packets loaded')
+            return
+        
+        filename, _ = QFileDialog.getSaveFileName(
+            self, 
+            'Generate Report', 
+            '', 
+            'HTML Files (*.html);;Text Files (*.txt)'
+        )
+        
+        if filename:
+            if filename.endswith('.html'):
+                ReportGenerator.generate_html_report(self.statistics, self.connections, filename)
+            else:
+                ReportGenerator.generate_text_report(self.statistics, self.connections, filename)
+            
+            QMessageBox.information(self, 'Success', f'Report generated: {filename}')
+    
+    def change_theme(self, theme):
+        """Change application theme"""
+        self.current_theme = theme
+        
+        if theme == 'dark':
+            self.setStyleSheet("""
+                QMainWindow, QWidget { background-color: #2b2b2b; color: #ffffff; }
+                QTableWidget, QTextEdit, QTreeWidget { background-color: #3c3c3c; color: #ffffff; }
+                QTableWidget::item:selected { background-color: #4a4a4a; }
+                QMenuBar, QMenu { background-color: #2b2b2b; color: #ffffff; }
+                QMenuBar::item:selected, QMenu::item:selected { background-color: #4a4a4a; }
+            """)
+        else:
+            self.setStyleSheet("")
+    
+    def show_about(self):
+        """Show about dialog"""
+        QMessageBox.about(
+            self,
+            'About PCAP Analyzer',
+            'PCAP/PCAPNG File Analyzer\n\n'
+            'A comprehensive network traffic analysis tool\n'
+            'with graphical user interface.\n\n'
+            'Version 1.0.0\n\n'
+            'Final Year Computer Networks Project'
+        )
+
+def launch_gui():
+    """Launch the GUI application"""
+    app = QApplication(sys.argv)
+    window = PCAPAnalyzerGUI()
+    window.show()
+    return app.exec_()
+
+if __name__ == '__main__':
+    sys.exit(launch_gui())
