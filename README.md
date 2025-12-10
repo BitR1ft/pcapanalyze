@@ -10,6 +10,9 @@ A comprehensive network traffic analysis tool with a graphical user interface fo
 ## 🌟 Highlights
 
 - **Professional GUI** - Wireshark-like three-pane interface with PyQt5
+- **CTF-Ready** - Specialized tools for CTF challenges: flag detection, credential extraction, text analysis
+- **Text & Payload Extraction** - Extract and search all text content from packets with regex support
+- **Decoder/Encoder Tools** - Base64, Hex, URL, ROT13, XOR decoding and encoding utilities
 - **Anomaly Detection** - Automatic detection of port scans, SYN floods, DNS tunneling, and more
 - **File Extraction** - Recover files from HTTP, FTP, and SMTP traffic
 - **Rich Visualizations** - 6+ chart types for traffic analysis
@@ -50,6 +53,17 @@ For detailed instructions, see [QUICKSTART.md](QUICKSTART.md)
 - **Statistics**: Protocol distribution, top talkers, bandwidth analysis
 - **Export**: CSV, JSON, and filtered PCAP export
 
+### CTF & Forensics Features
+- **Text Extraction**: Extract all text content and payloads from packets
+- **Flag Detection**: Automatic detection of CTF flag patterns (flag{}, CTF{}, hashes)
+- **Credential Extraction**: Find and decode credentials (Basic Auth, passwords, tokens)
+- **Smart Search**: Text and regex search across all packet payloads
+- **Decoder Tools**: Base64, Hex, URL, ROT13 encoding/decoding
+- **XOR Analysis**: Single-byte and repeating-key XOR brute forcing
+- **String Extraction**: Extract all printable strings from binary data
+- **URL/Email Extraction**: Automatically extract URLs and email addresses
+- **Entropy Analysis**: Detect encrypted or compressed data
+
 ### Advanced Features
 - **Visualization**: Traffic timelines, flow graphs, protocol distribution charts
 - **Anomaly Detection**: Port scans, unusual patterns, suspicious activities
@@ -58,11 +72,12 @@ For detailed instructions, see [QUICKSTART.md](QUICKSTART.md)
 - **Report Generation**: Automated PDF/HTML reports
 - **Theme Support**: Dark and light mode
 - **Performance**: Multi-threaded processing for large files
-- **Plugin System**: Custom analysis scripts
+- **Stream Reconstruction**: Reassemble TCP streams for analysis
 
 ## 📚 Documentation
 
 - **[Quick Start Guide](QUICKSTART.md)** - Get started in 5 minutes
+- **[CTF Challenge Guide](docs/CTF_GUIDE.md)** - Using the tool for CTF competitions
 - **[User Manual](docs/USER_MANUAL.md)** - Comprehensive usage guide
 - **[Developer Guide](docs/DEVELOPER_GUIDE.md)** - Technical documentation
 - **[Project Overview](PROJECT_OVERVIEW.md)** - Complete project summary
@@ -81,6 +96,35 @@ Detects:
 - Unencrypted credentials
 - Suspicious ports
 - Unusual packet sizes
+
+### CTF Challenge Analysis
+Perfect for CTF competitions and forensics challenges!
+
+**GUI Mode** (Recommended):
+```bash
+python pcap_analyzer.py
+# Load PCAP file and use these tabs:
+# - Text & Payloads: Search for flags, passwords, hidden data
+# - CTF Utilities: Auto-detect flags, extract credentials
+# - Decoder/Encoder: Decode Base64, Hex, XOR encrypted data
+```
+
+**Find Flags**:
+- Automatic detection of `flag{...}`, `CTF{...}` patterns
+- MD5/SHA1 hash detection
+- Base64-encoded flag detection
+
+**Extract Credentials**:
+- HTTP Basic Authentication (auto-decoded)
+- Passwords, API keys, tokens
+- Email addresses and URLs
+
+**Decode Hidden Data**:
+- Base64/Hex/URL/ROT13 decoding
+- Single-byte XOR brute force
+- Smart decode (tries all methods)
+
+See [CTF Guide](docs/CTF_GUIDE.md) for detailed walkthrough!
 
 ### File Extraction
 ```bash
