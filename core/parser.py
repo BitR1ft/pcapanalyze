@@ -2,7 +2,7 @@
 PCAP/PCAPNG file parser
 Handles reading and parsing of packet capture files
 """
-from scapy.all import rdpcap, PcapReader, sniff
+from scapy.all import rdpcap, PcapReader, sniff, IP, TCP, UDP, Ether
 from scapy.utils import PcapWriter
 import os
 from typing import List, Dict, Any
@@ -101,22 +101,22 @@ class PCAPParser:
         }
         
         # Add protocol-specific information
-        if hasattr(pkt, 'Ether'):
-            summary['src_mac'] = pkt['Ether'].src
-            summary['dst_mac'] = pkt['Ether'].dst
+        if pkt.haslayer(Ether):
+            summary['src_mac'] = pkt[Ether].src
+            summary['dst_mac'] = pkt[Ether].dst
         
-        if hasattr(pkt, 'IP'):
-            summary['src_ip'] = pkt['IP'].src
-            summary['dst_ip'] = pkt['IP'].dst
-            summary['protocol'] = pkt['IP'].proto
+        if pkt.haslayer(IP):
+            summary['src_ip'] = pkt[IP].src
+            summary['dst_ip'] = pkt[IP].dst
+            summary['protocol'] = pkt[IP].proto
         
-        if hasattr(pkt, 'TCP'):
-            summary['src_port'] = pkt['TCP'].sport
-            summary['dst_port'] = pkt['TCP'].dport
+        if pkt.haslayer(TCP):
+            summary['src_port'] = pkt[TCP].sport
+            summary['dst_port'] = pkt[TCP].dport
             summary['transport'] = 'TCP'
-        elif hasattr(pkt, 'UDP'):
-            summary['src_port'] = pkt['UDP'].sport
-            summary['dst_port'] = pkt['UDP'].dport
+        elif pkt.haslayer(UDP):
+            summary['src_port'] = pkt[UDP].sport
+            summary['dst_port'] = pkt[UDP].dport
             summary['transport'] = 'UDP'
         
         return summary
