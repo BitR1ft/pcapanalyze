@@ -146,7 +146,7 @@ class TextExtractor:
     def _extract_credentials(self, payload: bytes, packet_num: int):
         """Extract potential credentials from payload"""
         try:
-            text = payload.decode('utf-8', errors='ignore').lower()
+            text = payload.decode('utf-8', errors='ignore')
             
             # Look for common credential patterns
             patterns = {

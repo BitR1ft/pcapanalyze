@@ -28,6 +28,7 @@ from analysis.visualizer import TrafficVisualizer
 from utils.logger import logger
 from utils.filters import PacketFilter
 from utils.exporters import Exporter, ReportGenerator
+from utils.ctf_utils import CTFUtils
 
 class AnalysisThread(QThread):
     """Background thread for packet analysis"""
@@ -190,6 +191,10 @@ class PCAPAnalyzerGUI(QMainWindow):
         # CTF Utilities tab
         self.ctf_tab = self.create_ctf_tab()
         self.tabs.addTab(self.ctf_tab, "CTF Utilities")
+        
+        # Decoder tab
+        self.decoder_tab = self.create_decoder_tab()
+        self.tabs.addTab(self.decoder_tab, "Decoder/Encoder")
         
         # Status bar
         self.status_bar = QStatusBar()
@@ -421,6 +426,69 @@ class PCAPAnalyzerGUI(QMainWindow):
         self.ctf_results.setReadOnly(True)
         self.ctf_results.setFont(QFont('Courier', 9))
         layout.addWidget(self.ctf_results)
+        
+        return widget
+    
+    def create_decoder_tab(self):
+        """Create decoder/encoder utilities tab"""
+        widget = QWidget()
+        layout = QVBoxLayout(widget)
+        
+        # Input area
+        input_layout = QVBoxLayout()
+        input_layout.addWidget(QLabel('Input Text:'))
+        self.decoder_input = QTextEdit()
+        self.decoder_input.setMaximumHeight(100)
+        input_layout.addWidget(self.decoder_input)
+        layout.addLayout(input_layout)
+        
+        # Buttons
+        buttons_layout = QHBoxLayout()
+        
+        decode_b64_btn = QPushButton('Decode Base64')
+        decode_b64_btn.clicked.connect(lambda: self.apply_decoder('base64_decode'))
+        buttons_layout.addWidget(decode_b64_btn)
+        
+        encode_b64_btn = QPushButton('Encode Base64')
+        encode_b64_btn.clicked.connect(lambda: self.apply_decoder('base64_encode'))
+        buttons_layout.addWidget(encode_b64_btn)
+        
+        decode_hex_btn = QPushButton('Decode Hex')
+        decode_hex_btn.clicked.connect(lambda: self.apply_decoder('hex_decode'))
+        buttons_layout.addWidget(decode_hex_btn)
+        
+        encode_hex_btn = QPushButton('Encode Hex')
+        encode_hex_btn.clicked.connect(lambda: self.apply_decoder('hex_encode'))
+        buttons_layout.addWidget(encode_hex_btn)
+        
+        rot13_btn = QPushButton('ROT13')
+        rot13_btn.clicked.connect(lambda: self.apply_decoder('rot13'))
+        buttons_layout.addWidget(rot13_btn)
+        
+        smart_decode_btn = QPushButton('Smart Decode')
+        smart_decode_btn.clicked.connect(lambda: self.apply_decoder('smart'))
+        buttons_layout.addWidget(smart_decode_btn)
+        
+        buttons_layout.addStretch()
+        layout.addLayout(buttons_layout)
+        
+        # XOR section
+        xor_layout = QHBoxLayout()
+        xor_layout.addWidget(QLabel('XOR Single Byte:'))
+        xor_btn = QPushButton('Try All Keys')
+        xor_btn.clicked.connect(self.xor_single_byte_analysis)
+        xor_layout.addWidget(xor_btn)
+        xor_layout.addStretch()
+        layout.addLayout(xor_layout)
+        
+        # Output area
+        output_layout = QVBoxLayout()
+        output_layout.addWidget(QLabel('Output:'))
+        self.decoder_output = QTextEdit()
+        self.decoder_output.setReadOnly(True)
+        self.decoder_output.setFont(QFont('Courier', 9))
+        output_layout.addWidget(self.decoder_output)
+        layout.addLayout(output_layout)
         
         return widget
     
@@ -895,6 +963,86 @@ class PCAPAnalyzerGUI(QMainWindow):
             output += "No strings found.\n"
         
         self.ctf_results.setText(output)
+    
+    def apply_decoder(self, method: str):
+        """Apply decoder/encoder to input text"""
+        input_text = self.decoder_input.toPlainText().strip()
+        if not input_text:
+            QMessageBox.warning(self, 'Warning', 'Please enter text to decode/encode')
+            return
+        
+        output = ""
+        
+        try:
+            if method == 'base64_decode':
+                result = CTFUtils.decode_base64(input_text)
+                output = f"Base64 Decoded:\n{result if result else 'Failed to decode'}"
+            
+            elif method == 'base64_encode':
+                result = CTFUtils.encode_base64(input_text)
+                output = f"Base64 Encoded:\n{result}"
+            
+            elif method == 'hex_decode':
+                result = CTFUtils.decode_hex(input_text)
+                output = f"Hex Decoded:\n{result if result else 'Failed to decode'}"
+            
+            elif method == 'hex_encode':
+                result = CTFUtils.encode_hex(input_text)
+                output = f"Hex Encoded:\n{result}"
+            
+            elif method == 'rot13':
+                result = CTFUtils.rot13(input_text)
+                output = f"ROT13:\n{result}"
+            
+            elif method == 'smart':
+                results = CTFUtils.smart_decode(input_text)
+                output = "=== SMART DECODE RESULTS ===\n\n"
+                if results:
+                    for encoding, decoded in results.items():
+                        output += f"{encoding.upper()}:\n{decoded}\n\n{'-' * 60}\n\n"
+                else:
+                    output += "No successful decodings found.\n"
+            
+            self.decoder_output.setText(output)
+        
+        except Exception as e:
+            QMessageBox.critical(self, 'Error', f'Decoding error: {e}')
+    
+    def xor_single_byte_analysis(self):
+        """Perform single-byte XOR analysis"""
+        input_text = self.decoder_input.toPlainText().strip()
+        if not input_text:
+            QMessageBox.warning(self, 'Warning', 'Please enter hex data to analyze')
+            return
+        
+        try:
+            # Try to interpret as hex first
+            try:
+                data = bytes.fromhex(input_text.replace(' ', ''))
+            except:
+                # If not hex, use as raw bytes
+                data = input_text.encode('utf-8')
+            
+            results = CTFUtils.xor_single_byte(data)
+            
+            output = "=== SINGLE-BYTE XOR ANALYSIS ===\n\n"
+            output += f"Found {len(results)} potential results:\n\n"
+            
+            for i, result in enumerate(results[:20], 1):  # Show top 20
+                output += f"Result {i} - Key: {result['key']} ({result['key_char']}), "
+                output += f"Printable: {result['printable_ratio']:.2%}\n"
+                output += f"{result['result'][:200]}\n"  # Show first 200 chars
+                if len(result['result']) > 200:
+                    output += f"... (truncated)\n"
+                output += f"\n{'-' * 60}\n\n"
+            
+            if not results:
+                output += "No valid results found. Make sure input is valid hex data.\n"
+            
+            self.decoder_output.setText(output)
+        
+        except Exception as e:
+            QMessageBox.critical(self, 'Error', f'XOR analysis error: {e}')
     
     def change_theme(self, theme):
         """Change application theme"""
