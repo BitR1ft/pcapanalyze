@@ -120,7 +120,8 @@ class TextExtractor:
             protocols.append('TCP')
         elif pkt.haslayer(UDP):
             protocols.append('UDP')
-        # HTTP and DNS don't have dedicated Scapy layers in basic import
+        # Note: HTTP and DNS layers (HTTPRequest, HTTPResponse, DNS) exist but require
+        # specific imports. Basic implementation uses IP/TCP/UDP for simplicity.
         return '/'.join(protocols) if protocols else 'Unknown'
     
     def _extract_strings(self, data: bytes, min_length: int = 4) -> Set[str]:

@@ -1019,7 +1019,7 @@ class PCAPAnalyzerGUI(QMainWindow):
             # Try to interpret as hex first
             try:
                 data = bytes.fromhex(input_text.replace(' ', ''))
-            except:
+            except ValueError:
                 # If not hex, use as raw bytes
                 data = input_text.encode('utf-8')
             

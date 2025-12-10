@@ -5,6 +5,8 @@ Provides encoding/decoding and analysis utilities for CTF challenges
 import base64
 import binascii
 import string
+import math
+import urllib.parse
 from typing import List, Dict, Any, Optional
 
 
@@ -54,7 +56,6 @@ class CTFUtils:
     def decode_url(data: str) -> str:
         """Decode URL-encoded string"""
         try:
-            import urllib.parse
             return urllib.parse.unquote(data)
         except Exception:
             return data
@@ -63,7 +64,6 @@ class CTFUtils:
     def encode_url(data: str) -> str:
         """Encode string to URL encoding"""
         try:
-            import urllib.parse
             return urllib.parse.quote(data)
         except Exception:
             return data
@@ -106,16 +106,17 @@ class CTFUtils:
         for key in range(256):
             decrypted = bytes([b ^ key for b in data])
             try:
-                text = decrypted.decode('utf-8', errors='strict')
+                text = decrypted.decode('utf-8', errors='ignore')
                 # Check if result contains mostly printable characters
-                printable_ratio = sum(c in string.printable for c in text) / len(text)
-                if printable_ratio > 0.8:  # At least 80% printable
-                    results.append({
-                        'key': key,
-                        'key_char': chr(key) if 32 <= key < 127 else f'\\x{key:02x}',
-                        'result': text,
-                        'printable_ratio': printable_ratio
-                    })
+                if len(text) > 0:
+                    printable_ratio = sum(c in string.printable for c in text) / len(text)
+                    if printable_ratio > 0.8:  # At least 80% printable
+                        results.append({
+                            'key': key,
+                            'key_char': chr(key) if 32 <= key < 127 else f'\\x{key:02x}',
+                            'result': text,
+                            'printable_ratio': printable_ratio
+                        })
             except Exception:
                 pass
         
@@ -137,7 +138,7 @@ class CTFUtils:
             for b in range(256):
                 decrypted = bytes([byte ^ b for byte in bytes_at_position])
                 try:
-                    text = decrypted.decode('utf-8', errors='strict')
+                    text = decrypted.decode('utf-8', errors='ignore')
                     score = sum(c in string.printable for c in text)
                     if score > best_score:
                         best_score = score
@@ -159,7 +160,6 @@ class CTFUtils:
             frequencies[byte] = frequencies.get(byte, 0) + 1
         
         # Calculate entropy
-        import math
         entropy = 0.0
         data_len = len(data)
         for count in frequencies.values():
