@@ -4,6 +4,7 @@ Tracks TCP/UDP flows and analyzes connection patterns
 """
 from typing import Dict, List, Any, Tuple
 from collections import defaultdict
+from scapy.all import IP, TCP, UDP
 from utils.logger import logger
 
 class ConnectionTracker:
@@ -23,10 +24,10 @@ class ConnectionTracker:
         self.connection_list = []
         
         for i, pkt in enumerate(packets):
-            if hasattr(pkt, 'IP'):
-                if hasattr(pkt, 'TCP'):
+            if pkt.haslayer(IP):
+                if pkt.haslayer(TCP):
                     self._process_tcp_packet(pkt, i)
-                elif hasattr(pkt, 'UDP'):
+                elif pkt.haslayer(UDP):
                     self._process_udp_packet(pkt, i)
         
         # Compile connection summaries
@@ -37,10 +38,10 @@ class ConnectionTracker:
     
     def _get_tcp_key(self, pkt) -> Tuple:
         """Generate unique key for TCP connection"""
-        src_ip = pkt['IP'].src
-        dst_ip = pkt['IP'].dst
-        src_port = pkt['TCP'].sport
-        dst_port = pkt['TCP'].dport
+        src_ip = pkt[IP].src
+        dst_ip = pkt[IP].dst
+        src_port = pkt[TCP].sport
+        dst_port = pkt[TCP].dport
         
         # Normalize key (smaller IP:port first)
         if (src_ip, src_port) < (dst_ip, dst_port):
@@ -78,7 +79,7 @@ class ConnectionTracker:
         conn['end_time'] = float(pkt.time) if hasattr(pkt, 'time') else conn['end_time']
         
         # Analyze TCP flags
-        tcp = pkt['TCP']
+        tcp = pkt[TCP]
         flags = tcp.flags
         
         # Track connection state
@@ -105,17 +106,17 @@ class ConnectionTracker:
         
         # Track bytes
         pkt_len = len(pkt)
-        if pkt['IP'].src == key[0]:
+        if pkt[IP].src == key[0]:
             conn['bytes_sent'] += pkt_len
         else:
             conn['bytes_recv'] += pkt_len
     
     def _get_udp_key(self, pkt) -> Tuple:
         """Generate unique key for UDP flow"""
-        src_ip = pkt['IP'].src
-        dst_ip = pkt['IP'].dst
-        src_port = pkt['UDP'].sport
-        dst_port = pkt['UDP'].dport
+        src_ip = pkt[IP].src
+        dst_ip = pkt[IP].dst
+        src_port = pkt[UDP].sport
+        dst_port = pkt[UDP].dport
         
         # Normalize key
         if (src_ip, src_port) < (dst_ip, dst_port):
@@ -147,7 +148,7 @@ class ConnectionTracker:
         
         # Track bytes
         pkt_len = len(pkt)
-        if pkt['IP'].src == key[0]:
+        if pkt[IP].src == key[0]:
             flow['bytes_sent'] += pkt_len
         else:
             flow['bytes_recv'] += pkt_len

@@ -21,12 +21,14 @@ from core.parser import PCAPParser
 from core.dissector import PacketDissector
 from core.connection_tracker import ConnectionTracker
 from core.file_extractor import FileExtractor
+from core.text_extractor import TextExtractor
 from core.statistics import StatisticsGenerator
 from analysis.anomaly_detector import AnomalyDetector
 from analysis.visualizer import TrafficVisualizer
 from utils.logger import logger
 from utils.filters import PacketFilter
 from utils.exporters import Exporter, ReportGenerator
+from utils.ctf_utils import CTFUtils
 
 class AnalysisThread(QThread):
     """Background thread for packet analysis"""
@@ -75,6 +77,12 @@ class AnalysisThread(QThread):
             extractor = FileExtractor()
             extracted_files = extractor.extract_files(packets)
             
+            self.progress.emit(95, "Extracting text and payloads...")
+            
+            # Extract text content
+            text_extractor = TextExtractor()
+            text_data = text_extractor.extract_all_text(packets)
+            
             self.progress.emit(100, "Analysis complete!")
             
             # Return all results
@@ -85,7 +93,9 @@ class AnalysisThread(QThread):
                 'connections': connections,
                 'statistics': stats,
                 'anomalies': anomalies,
-                'extracted_files': extracted_files
+                'extracted_files': extracted_files,
+                'text_data': text_data,
+                'text_extractor': text_extractor
             }
             
             self.finished.emit(results)
@@ -105,6 +115,8 @@ class PCAPAnalyzerGUI(QMainWindow):
         self.statistics = {}
         self.anomalies = []
         self.extracted_files = []
+        self.text_data = {}
+        self.text_extractor = None
         self.parser = None
         self.current_theme = 'light'
         
@@ -171,6 +183,18 @@ class PCAPAnalyzerGUI(QMainWindow):
         # Extracted Files tab
         self.files_tab = self.create_files_tab()
         self.tabs.addTab(self.files_tab, "Extracted Files")
+        
+        # Text/Payloads tab
+        self.text_tab = self.create_text_tab()
+        self.tabs.addTab(self.text_tab, "Text & Payloads")
+        
+        # CTF Utilities tab
+        self.ctf_tab = self.create_ctf_tab()
+        self.tabs.addTab(self.ctf_tab, "CTF Utilities")
+        
+        # Decoder tab
+        self.decoder_tab = self.create_decoder_tab()
+        self.tabs.addTab(self.decoder_tab, "Decoder/Encoder")
         
         # Status bar
         self.status_bar = QStatusBar()
@@ -332,6 +356,142 @@ class PCAPAnalyzerGUI(QMainWindow):
         
         return widget
     
+    def create_text_tab(self):
+        """Create text and payloads view"""
+        widget = QWidget()
+        layout = QVBoxLayout(widget)
+        
+        # Search bar
+        search_layout = QHBoxLayout()
+        search_layout.addWidget(QLabel('Search:'))
+        self.text_search_input = QLineEdit()
+        self.text_search_input.setPlaceholderText('Enter text to search in all payloads...')
+        search_layout.addWidget(self.text_search_input)
+        
+        text_search_btn = QPushButton('Search Text')
+        text_search_btn.clicked.connect(self.search_text)
+        search_layout.addWidget(text_search_btn)
+        
+        regex_search_btn = QPushButton('Search Regex')
+        regex_search_btn.clicked.connect(self.search_regex)
+        search_layout.addWidget(regex_search_btn)
+        
+        layout.addLayout(search_layout)
+        
+        # Text display area
+        self.text_display = QTextEdit()
+        self.text_display.setReadOnly(True)
+        self.text_display.setFont(QFont('Courier', 9))
+        layout.addWidget(self.text_display)
+        
+        # Statistics
+        self.text_stats_label = QLabel('No text data loaded')
+        layout.addWidget(self.text_stats_label)
+        
+        return widget
+    
+    def create_ctf_tab(self):
+        """Create CTF utilities view"""
+        widget = QWidget()
+        layout = QVBoxLayout(widget)
+        
+        # Action buttons
+        buttons_layout = QHBoxLayout()
+        
+        find_flags_btn = QPushButton('Find Flags')
+        find_flags_btn.clicked.connect(self.find_flags)
+        buttons_layout.addWidget(find_flags_btn)
+        
+        extract_urls_btn = QPushButton('Extract URLs')
+        extract_urls_btn.clicked.connect(self.extract_urls)
+        buttons_layout.addWidget(extract_urls_btn)
+        
+        extract_emails_btn = QPushButton('Extract Emails')
+        extract_emails_btn.clicked.connect(self.extract_emails)
+        buttons_layout.addWidget(extract_emails_btn)
+        
+        show_creds_btn = QPushButton('Show Credentials')
+        show_creds_btn.clicked.connect(self.show_credentials)
+        buttons_layout.addWidget(show_creds_btn)
+        
+        show_strings_btn = QPushButton('Show All Strings')
+        show_strings_btn.clicked.connect(self.show_strings)
+        buttons_layout.addWidget(show_strings_btn)
+        
+        buttons_layout.addStretch()
+        layout.addLayout(buttons_layout)
+        
+        # Results display
+        self.ctf_results = QTextEdit()
+        self.ctf_results.setReadOnly(True)
+        self.ctf_results.setFont(QFont('Courier', 9))
+        layout.addWidget(self.ctf_results)
+        
+        return widget
+    
+    def create_decoder_tab(self):
+        """Create decoder/encoder utilities tab"""
+        widget = QWidget()
+        layout = QVBoxLayout(widget)
+        
+        # Input area
+        input_layout = QVBoxLayout()
+        input_layout.addWidget(QLabel('Input Text:'))
+        self.decoder_input = QTextEdit()
+        self.decoder_input.setMaximumHeight(100)
+        input_layout.addWidget(self.decoder_input)
+        layout.addLayout(input_layout)
+        
+        # Buttons
+        buttons_layout = QHBoxLayout()
+        
+        decode_b64_btn = QPushButton('Decode Base64')
+        decode_b64_btn.clicked.connect(lambda: self.apply_decoder('base64_decode'))
+        buttons_layout.addWidget(decode_b64_btn)
+        
+        encode_b64_btn = QPushButton('Encode Base64')
+        encode_b64_btn.clicked.connect(lambda: self.apply_decoder('base64_encode'))
+        buttons_layout.addWidget(encode_b64_btn)
+        
+        decode_hex_btn = QPushButton('Decode Hex')
+        decode_hex_btn.clicked.connect(lambda: self.apply_decoder('hex_decode'))
+        buttons_layout.addWidget(decode_hex_btn)
+        
+        encode_hex_btn = QPushButton('Encode Hex')
+        encode_hex_btn.clicked.connect(lambda: self.apply_decoder('hex_encode'))
+        buttons_layout.addWidget(encode_hex_btn)
+        
+        rot13_btn = QPushButton('ROT13')
+        rot13_btn.clicked.connect(lambda: self.apply_decoder('rot13'))
+        buttons_layout.addWidget(rot13_btn)
+        
+        smart_decode_btn = QPushButton('Smart Decode')
+        smart_decode_btn.clicked.connect(lambda: self.apply_decoder('smart'))
+        buttons_layout.addWidget(smart_decode_btn)
+        
+        buttons_layout.addStretch()
+        layout.addLayout(buttons_layout)
+        
+        # XOR section
+        xor_layout = QHBoxLayout()
+        xor_layout.addWidget(QLabel('XOR Single Byte:'))
+        xor_btn = QPushButton('Try All Keys')
+        xor_btn.clicked.connect(self.xor_single_byte_analysis)
+        xor_layout.addWidget(xor_btn)
+        xor_layout.addStretch()
+        layout.addLayout(xor_layout)
+        
+        # Output area
+        output_layout = QVBoxLayout()
+        output_layout.addWidget(QLabel('Output:'))
+        self.decoder_output = QTextEdit()
+        self.decoder_output.setReadOnly(True)
+        self.decoder_output.setFont(QFont('Courier', 9))
+        output_layout.addWidget(self.decoder_output)
+        layout.addLayout(output_layout)
+        
+        return widget
+    
     def open_file(self):
         """Open a PCAP file"""
         filename, _ = QFileDialog.getOpenFileName(
@@ -371,6 +531,8 @@ class PCAPAnalyzerGUI(QMainWindow):
         self.statistics = results['statistics']
         self.anomalies = results['anomalies']
         self.extracted_files = results['extracted_files']
+        self.text_data = results.get('text_data', {})
+        self.text_extractor = results.get('text_extractor')
         
         # Update all views
         self.update_packet_list()
@@ -378,6 +540,7 @@ class PCAPAnalyzerGUI(QMainWindow):
         self.update_statistics_view()
         self.update_anomalies_view()
         self.update_files_view()
+        self.update_text_view()
         
         self.progress_bar.setVisible(False)
         self.status_bar.showMessage(f'Loaded {len(self.packets)} packets from {os.path.basename(self.current_file)}')
@@ -612,6 +775,274 @@ class PCAPAnalyzerGUI(QMainWindow):
                 ReportGenerator.generate_text_report(self.statistics, self.connections, filename)
             
             QMessageBox.information(self, 'Success', f'Report generated: {filename}')
+    
+    def update_text_view(self):
+        """Update text and payloads view"""
+        if not self.text_data:
+            self.text_display.setText("No text data available")
+            return
+        
+        # Show all extracted text
+        text_output = "=== EXTRACTED TEXT FROM ALL PACKETS ===\n\n"
+        
+        for item in self.text_data.get('text_packets', [])[:100]:  # Limit to first 100 for performance
+            text_output += f"Packet #{item['packet_num']} - {item['protocol']}\n"
+            text_output += f"Source: {item['source']} -> Destination: {item['destination']}\n"
+            text_output += f"{'-' * 80}\n"
+            text_output += f"{item['text'][:500]}\n"  # Show first 500 chars
+            if len(item['text']) > 500:
+                text_output += f"... (truncated, total length: {len(item['text'])} chars)\n"
+            text_output += f"\n{'=' * 80}\n\n"
+        
+        if len(self.text_data.get('text_packets', [])) > 100:
+            text_output += f"\n... and {len(self.text_data.get('text_packets', [])) - 100} more packets with text\n"
+        
+        self.text_display.setText(text_output)
+        
+        # Update statistics
+        if self.text_extractor:
+            stats = self.text_extractor.get_statistics()
+            stats_text = f"Text Packets: {stats['total_text_packets']} | "
+            stats_text += f"Unique Strings: {stats['unique_strings']} | "
+            stats_text += f"Credentials Found: {stats['credentials_found']}"
+            self.text_stats_label.setText(stats_text)
+    
+    def search_text(self):
+        """Search for text in payloads"""
+        if not self.text_extractor:
+            QMessageBox.warning(self, 'Warning', 'No text data available')
+            return
+        
+        query = self.text_search_input.text().strip()
+        if not query:
+            QMessageBox.warning(self, 'Warning', 'Please enter a search term')
+            return
+        
+        results = self.text_extractor.search_text(query)
+        
+        output = f"=== SEARCH RESULTS FOR: '{query}' ===\n\n"
+        output += f"Found {len(results)} matches\n\n"
+        
+        for result in results:
+            output += f"Packet #{result['packet_num']} - {result['protocol']}\n"
+            output += f"Source: {result['source']} -> Destination: {result['destination']}\n"
+            output += f"Context: ...{result['context']}...\n"
+            output += f"{'-' * 80}\n\n"
+        
+        self.text_display.setText(output)
+    
+    def search_regex(self):
+        """Search using regex pattern"""
+        if not self.text_extractor:
+            QMessageBox.warning(self, 'Warning', 'No text data available')
+            return
+        
+        pattern = self.text_search_input.text().strip()
+        if not pattern:
+            QMessageBox.warning(self, 'Warning', 'Please enter a regex pattern')
+            return
+        
+        try:
+            results = self.text_extractor.search_regex(pattern)
+            
+            output = f"=== REGEX SEARCH RESULTS FOR: '{pattern}' ===\n\n"
+            output += f"Found {len(results)} matches\n\n"
+            
+            for result in results:
+                output += f"Packet #{result['packet_num']} - {result['protocol']}\n"
+                output += f"Match: {result['match']}\n"
+                output += f"Context: ...{result['context']}...\n"
+                output += f"{'-' * 80}\n\n"
+            
+            self.text_display.setText(output)
+        except Exception as e:
+            QMessageBox.critical(self, 'Error', f'Invalid regex pattern: {e}')
+    
+    def find_flags(self):
+        """Find CTF flags"""
+        if not self.text_extractor:
+            QMessageBox.warning(self, 'Warning', 'No text data available')
+            return
+        
+        flags = self.text_extractor.find_flags()
+        
+        output = "=== CTF FLAGS FOUND ===\n\n"
+        output += f"Found {len(flags)} potential flags\n\n"
+        
+        for flag in flags:
+            output += f"Packet #{flag['packet_num']} - {flag['protocol']}\n"
+            output += f"Flag: {flag['match']}\n"
+            output += f"Context: ...{flag['context']}...\n"
+            output += f"{'-' * 80}\n\n"
+        
+        if not flags:
+            output += "No flags found. Try searching manually.\n"
+        
+        self.ctf_results.setText(output)
+    
+    def extract_urls(self):
+        """Extract URLs from text"""
+        if not self.text_extractor:
+            QMessageBox.warning(self, 'Warning', 'No text data available')
+            return
+        
+        urls = self.text_extractor.extract_urls()
+        
+        output = "=== EXTRACTED URLs ===\n\n"
+        output += f"Found {len(urls)} URLs\n\n"
+        
+        for url in urls:
+            output += f"Packet #{url['packet_num']}: {url['match']}\n"
+        
+        if not urls:
+            output += "No URLs found.\n"
+        
+        self.ctf_results.setText(output)
+    
+    def extract_emails(self):
+        """Extract email addresses"""
+        if not self.text_extractor:
+            QMessageBox.warning(self, 'Warning', 'No text data available')
+            return
+        
+        emails = self.text_extractor.extract_emails()
+        
+        output = "=== EXTRACTED EMAIL ADDRESSES ===\n\n"
+        output += f"Found {len(emails)} email addresses\n\n"
+        
+        for email in emails:
+            output += f"Packet #{email['packet_num']}: {email['match']}\n"
+        
+        if not emails:
+            output += "No email addresses found.\n"
+        
+        self.ctf_results.setText(output)
+    
+    def show_credentials(self):
+        """Show extracted credentials"""
+        if not self.text_extractor:
+            QMessageBox.warning(self, 'Warning', 'No text data available')
+            return
+        
+        creds = self.text_data.get('credentials', [])
+        
+        output = "=== EXTRACTED CREDENTIALS ===\n\n"
+        output += f"Found {len(creds)} potential credentials\n\n"
+        
+        for cred in creds:
+            output += f"Packet #{cred['packet_num']}\n"
+            output += f"Type: {cred['type']}\n"
+            output += f"Value: {cred['value']}\n"
+            if 'decoded' in cred:
+                output += f"Decoded: {cred['decoded']}\n"
+            output += f"{'-' * 80}\n\n"
+        
+        if not creds:
+            output += "No credentials found.\n"
+        
+        self.ctf_results.setText(output)
+    
+    def show_strings(self):
+        """Show all extracted strings"""
+        if not self.text_extractor:
+            QMessageBox.warning(self, 'Warning', 'No text data available')
+            return
+        
+        strings = self.text_data.get('unique_strings', [])
+        
+        output = "=== ALL EXTRACTED STRINGS ===\n\n"
+        output += f"Found {len(strings)} unique strings (min length: 4)\n\n"
+        
+        for string in strings[:1000]:  # Limit to first 1000
+            output += f"{string}\n"
+        
+        if len(strings) > 1000:
+            output += f"\n... and {len(strings) - 1000} more strings\n"
+        
+        if not strings:
+            output += "No strings found.\n"
+        
+        self.ctf_results.setText(output)
+    
+    def apply_decoder(self, method: str):
+        """Apply decoder/encoder to input text"""
+        input_text = self.decoder_input.toPlainText().strip()
+        if not input_text:
+            QMessageBox.warning(self, 'Warning', 'Please enter text to decode/encode')
+            return
+        
+        output = ""
+        
+        try:
+            if method == 'base64_decode':
+                result = CTFUtils.decode_base64(input_text)
+                output = f"Base64 Decoded:\n{result if result else 'Failed to decode'}"
+            
+            elif method == 'base64_encode':
+                result = CTFUtils.encode_base64(input_text)
+                output = f"Base64 Encoded:\n{result}"
+            
+            elif method == 'hex_decode':
+                result = CTFUtils.decode_hex(input_text)
+                output = f"Hex Decoded:\n{result if result else 'Failed to decode'}"
+            
+            elif method == 'hex_encode':
+                result = CTFUtils.encode_hex(input_text)
+                output = f"Hex Encoded:\n{result}"
+            
+            elif method == 'rot13':
+                result = CTFUtils.rot13(input_text)
+                output = f"ROT13:\n{result}"
+            
+            elif method == 'smart':
+                results = CTFUtils.smart_decode(input_text)
+                output = "=== SMART DECODE RESULTS ===\n\n"
+                if results:
+                    for encoding, decoded in results.items():
+                        output += f"{encoding.upper()}:\n{decoded}\n\n{'-' * 60}\n\n"
+                else:
+                    output += "No successful decodings found.\n"
+            
+            self.decoder_output.setText(output)
+        
+        except Exception as e:
+            QMessageBox.critical(self, 'Error', f'Decoding error: {e}')
+    
+    def xor_single_byte_analysis(self):
+        """Perform single-byte XOR analysis"""
+        input_text = self.decoder_input.toPlainText().strip()
+        if not input_text:
+            QMessageBox.warning(self, 'Warning', 'Please enter hex data to analyze')
+            return
+        
+        try:
+            # Try to interpret as hex first
+            try:
+                data = bytes.fromhex(input_text.replace(' ', ''))
+            except ValueError:
+                # If not hex, use as raw bytes
+                data = input_text.encode('utf-8')
+            
+            results = CTFUtils.xor_single_byte(data)
+            
+            output = "=== SINGLE-BYTE XOR ANALYSIS ===\n\n"
+            output += f"Found {len(results)} potential results:\n\n"
+            
+            for i, result in enumerate(results[:20], 1):  # Show top 20
+                output += f"Result {i} - Key: {result['key']} ({result['key_char']}), "
+                output += f"Printable: {result['printable_ratio']:.2%}\n"
+                output += f"{result['result'][:200]}\n"  # Show first 200 chars
+                if len(result['result']) > 200:
+                    output += f"... (truncated)\n"
+                output += f"\n{'-' * 60}\n\n"
+            
+            if not results:
+                output += "No valid results found. Make sure input is valid hex data.\n"
+            
+            self.decoder_output.setText(output)
+        
+        except Exception as e:
+            QMessageBox.critical(self, 'Error', f'XOR analysis error: {e}')
     
     def change_theme(self, theme):
         """Change application theme"""

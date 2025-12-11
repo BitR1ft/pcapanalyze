@@ -5,6 +5,7 @@ Extracts embedded files from network traffic (HTTP, FTP, SMTP, etc.)
 import os
 import re
 from typing import List, Dict, Any
+from scapy.all import TCP, Raw
 from utils.logger import logger
 
 class FileExtractor:
@@ -55,10 +56,10 @@ class FileExtractor:
         current_response = None
         
         for pkt in packets:
-            if not (hasattr(pkt, 'TCP') and hasattr(pkt, 'Raw')):
+            if not (pkt.haslayer(TCP) and pkt.haslayer(Raw)):
                 continue
             
-            payload = bytes(pkt['Raw']).decode('utf-8', errors='replace')
+            payload = bytes(pkt[Raw]).decode('utf-8', errors='replace')
             
             # HTTP Request
             if any(method in payload[:50] for method in ['GET ', 'POST ', 'PUT ', 'DELETE ', 'HEAD ']):
@@ -225,12 +226,11 @@ class FileExtractor:
         files = []
         
         for pkt in packets:
-            if hasattr(pkt, 'TCP') and hasattr(pkt, 'Raw'):
+            if pkt.haslayer(TCP) and pkt.haslayer(Raw):
                 # Check for FTP-DATA port
-                if (hasattr(pkt['TCP'], 'sport') and pkt['TCP'].sport == 20) or \
-                   (hasattr(pkt['TCP'], 'dport') and pkt['TCP'].dport == 20):
+                if pkt[TCP].sport == 20 or pkt[TCP].dport == 20:
                     
-                    data = bytes(pkt['Raw'])
+                    data = bytes(pkt[Raw])
                     if len(data) > 100:  # Minimum size threshold
                         filename = f"ftp_file_{len(files) + 1}.dat"
                         filepath = os.path.join(self.output_dir, filename)
@@ -257,11 +257,10 @@ class FileExtractor:
         files = []
         
         for pkt in packets:
-            if hasattr(pkt, 'TCP') and hasattr(pkt, 'Raw'):
-                if (hasattr(pkt['TCP'], 'dport') and pkt['TCP'].dport == 25) or \
-                   (hasattr(pkt['TCP'], 'sport') and pkt['TCP'].sport == 25):
+            if pkt.haslayer(TCP) and pkt.haslayer(Raw):
+                if pkt[TCP].dport == 25 or pkt[TCP].sport == 25:
                     
-                    payload = bytes(pkt['Raw']).decode('utf-8', errors='replace')
+                    payload = bytes(pkt[Raw]).decode('utf-8', errors='replace')
                     
                     # Look for base64 encoded attachments
                     if 'Content-Transfer-Encoding: base64' in payload:
