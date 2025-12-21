@@ -10,7 +10,6 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from core.parser import PCAPParser
 from core.dissector import PacketDissector
-from core.connection_tracker import ConnectionTracker
 from core.statistics import StatisticsGenerator
 from utils.filters import PacketFilter, PacketSearcher
 
@@ -38,15 +37,6 @@ class TestPacketDissector:
         assert hasattr(PacketDissector, 'get_ip_info')
         assert hasattr(PacketDissector, 'get_tcp_info')
         assert hasattr(PacketDissector, 'get_udp_info')
-
-class TestConnectionTracker:
-    """Test connection tracking"""
-    
-    def test_tracker_init(self):
-        """Test tracker initialization"""
-        tracker = ConnectionTracker()
-        assert tracker.tcp_connections == {}
-        assert tracker.udp_flows == {}
 
 class TestFilters:
     """Test filtering functionality"""

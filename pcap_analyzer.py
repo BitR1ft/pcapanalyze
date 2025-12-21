@@ -12,11 +12,8 @@ sys.path.insert(0, str(Path(__file__).parent))
 
 from core.parser import PCAPParser
 from core.dissector import PacketDissector
-from core.connection_tracker import ConnectionTracker
 from core.file_extractor import FileExtractor
 from core.statistics import StatisticsGenerator
-from analysis.anomaly_detector import AnomalyDetector
-from analysis.visualizer import TrafficVisualizer
 from utils.logger import logger
 from utils.exporters import Exporter, ReportGenerator
 
@@ -35,13 +32,9 @@ def analyze_pcap_file(filename: str, options: dict):
     
     logger.info(f"Loaded {len(packets)} packets from {file_info['format']} file")
     
-    # Analyze connections
-    tracker = ConnectionTracker()
-    connections = tracker.analyze_connections(packets)
-    
     # Generate statistics
     stats_gen = StatisticsGenerator()
-    stats = stats_gen.generate_statistics(packets, connections)
+    stats = stats_gen.generate_statistics(packets)
     
     # Extract files if requested
     extracted_files = []
@@ -50,27 +43,10 @@ def analyze_pcap_file(filename: str, options: dict):
         extracted_files = extractor.extract_files(packets)
         logger.info(f"Extracted {len(extracted_files)} files")
     
-    # Detect anomalies if requested
-    anomalies = []
-    if options.get('detect_anomalies'):
-        detector = AnomalyDetector()
-        anomalies = detector.detect_anomalies(packets, connections)
-        logger.info(f"Detected {len(anomalies)} anomalies")
-    
-    # Create visualizations if requested
-    if options.get('create_visualizations'):
-        visualizer = TrafficVisualizer()
-        viz_files = visualizer.create_all_visualizations(packets, connections, stats)
-        logger.info(f"Created {len(viz_files)} visualizations")
-    
     # Export results
     if options.get('export_stats'):
         Exporter.export_statistics_to_csv(stats, options['export_stats'])
         logger.info(f"Exported statistics to {options['export_stats']}")
-    
-    if options.get('export_connections'):
-        Exporter.export_connections_to_csv(connections, options['export_connections'])
-        logger.info(f"Exported connections to {options['export_connections']}")
     
     if options.get('export_packets'):
         Exporter.export_packets_to_csv(packets, options['export_packets'])
@@ -80,9 +56,9 @@ def analyze_pcap_file(filename: str, options: dict):
     if options.get('generate_report'):
         report_file = options['generate_report']
         if report_file.endswith('.html'):
-            ReportGenerator.generate_html_report(stats, connections, report_file)
+            ReportGenerator.generate_html_report(stats, report_file)
         else:
-            ReportGenerator.generate_text_report(stats, connections, report_file)
+            ReportGenerator.generate_text_report(stats, report_file)
         logger.info(f"Generated report: {report_file}")
     
     # Print summary
@@ -94,9 +70,6 @@ def analyze_pcap_file(filename: str, options: dict):
     print(f"Total Packets: {stats['general']['total_packets']}")
     print(f"Total Bytes: {stats['general']['total_bytes']:,}")
     print(f"Duration: {stats['general']['duration_seconds']:.2f} seconds")
-    print(f"Connections: {len(connections)}")
-    if anomalies:
-        print(f"Anomalies Detected: {len(anomalies)}")
     if extracted_files:
         print(f"Files Extracted: {len(extracted_files)}")
     print("=" * 80 + "\n")
@@ -116,8 +89,8 @@ Examples:
   # Analyze a file from command line
   python pcap_analyzer.py -f capture.pcap
   
-  # Extract files and detect anomalies
-  python pcap_analyzer.py -f capture.pcap --extract-files --detect-anomalies
+  # Extract files
+  python pcap_analyzer.py -f capture.pcap --extract-files
   
   # Generate comprehensive report
   python pcap_analyzer.py -f capture.pcap --report analysis_report.html
@@ -131,10 +104,7 @@ Examples:
     parser.add_argument('--gui', action='store_true', help='Launch GUI mode (default if no file specified)')
     parser.add_argument('--extract-files', action='store_true', help='Extract embedded files from traffic')
     parser.add_argument('--extract-dir', default='extracted_files', help='Directory for extracted files')
-    parser.add_argument('--detect-anomalies', action='store_true', help='Run anomaly detection')
-    parser.add_argument('--visualize', action='store_true', help='Create traffic visualizations')
     parser.add_argument('--export-stats', help='Export statistics to CSV file')
-    parser.add_argument('--export-connections', help='Export connections to CSV file')
     parser.add_argument('--export-packets', help='Export packet list to CSV file')
     parser.add_argument('--report', help='Generate analysis report (HTML or TXT)')
     
@@ -160,10 +130,7 @@ Examples:
     options = {
         'extract_files': args.extract_files,
         'extract_dir': args.extract_dir,
-        'detect_anomalies': args.detect_anomalies,
-        'create_visualizations': args.visualize,
         'export_stats': args.export_stats,
-        'export_connections': args.export_connections,
         'export_packets': args.export_packets,
         'generate_report': args.report
     }

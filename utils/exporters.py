@@ -7,6 +7,9 @@ from typing import List, Dict, Any
 from datetime import datetime
 import os
 
+# Constants
+TOP_ITEMS_LIMIT = 20  # Maximum number of items to show in reports
+
 class Exporter:
     """Export analysis results to various formats"""
     
@@ -63,11 +66,6 @@ class Exporter:
         return Exporter.export_to_csv(packet_data, filename)
     
     @staticmethod
-    def export_connections_to_csv(connections: List[Dict], filename: str):
-        """Export connection data to CSV"""
-        return Exporter.export_to_csv(connections, filename)
-    
-    @staticmethod
     def export_statistics_to_csv(stats: Dict, filename: str):
         """Export statistics to CSV"""
         stats_list = []
@@ -103,7 +101,7 @@ class ReportGenerator:
     """Generate analysis reports"""
     
     @staticmethod
-    def generate_text_report(stats: Dict, connections: List[Dict], filename: str):
+    def generate_text_report(stats: Dict, filename: str):
         """Generate a text report"""
         try:
             with open(filename, 'w', encoding='utf-8') as f:
@@ -120,16 +118,13 @@ class ReportGenerator:
                         f.write(f"\n{key}:\n")
                         for sub_key, sub_value in value.items():
                             f.write(f"  {sub_key}: {sub_value}\n")
+                    elif isinstance(value, list):
+                        f.write(f"\n{key}:\n")
+                        for item in value[:TOP_ITEMS_LIMIT]:
+                            if isinstance(item, dict):
+                                f.write(f"  {item}\n")
                     else:
                         f.write(f"{key}: {value}\n")
-                
-                # Connections section
-                f.write("\n\nCONNECTIONS\n")
-                f.write("-" * 80 + "\n")
-                for i, conn in enumerate(connections[:50], 1):  # Top 50 connections
-                    f.write(f"\nConnection {i}:\n")
-                    for key, value in conn.items():
-                        f.write(f"  {key}: {value}\n")
                 
                 f.write("\n" + "=" * 80 + "\n")
             
@@ -139,7 +134,7 @@ class ReportGenerator:
             return False
     
     @staticmethod
-    def generate_html_report(stats: Dict, connections: List[Dict], filename: str):
+    def generate_html_report(stats: Dict, filename: str):
         """Generate an HTML report"""
         try:
             html_content = """
@@ -167,12 +162,6 @@ class ReportGenerator:
         <tr><th>Category</th><th>Item</th><th>Value</th></tr>
         {stats_rows}
     </table>
-    
-    <h2>Connections (Top 50)</h2>
-    <table>
-        <tr>{conn_headers}</tr>
-        {conn_rows}
-    </table>
 </body>
 </html>
 """
@@ -182,26 +171,17 @@ class ReportGenerator:
                 if isinstance(value, dict):
                     for sub_key, sub_value in value.items():
                         stats_rows += f"<tr><td>{key}</td><td>{sub_key}</td><td>{sub_value}</td></tr>\n"
+                elif isinstance(value, list):
+                    for item in value[:TOP_ITEMS_LIMIT]:
+                        if isinstance(item, dict):
+                            stats_rows += f"<tr><td>{key}</td><td></td><td>{item}</td></tr>\n"
                 else:
                     stats_rows += f"<tr><td>{key}</td><td></td><td>{value}</td></tr>\n"
-            
-            # Generate connection headers and rows
-            if connections:
-                conn_headers = "".join([f"<th>{key}</th>" for key in connections[0].keys()])
-                conn_rows = ""
-                for conn in connections[:50]:
-                    row = "<tr>" + "".join([f"<td>{value}</td>" for value in conn.values()]) + "</tr>\n"
-                    conn_rows += row
-            else:
-                conn_headers = "<th>No Data</th>"
-                conn_rows = "<tr><td>No connections found</td></tr>"
             
             # Fill in the template
             html_content = html_content.format(
                 timestamp=datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-                stats_rows=stats_rows,
-                conn_headers=conn_headers,
-                conn_rows=conn_rows
+                stats_rows=stats_rows
             )
             
             with open(filename, 'w', encoding='utf-8') as f:

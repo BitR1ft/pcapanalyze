@@ -13,9 +13,7 @@ A comprehensive network traffic analysis tool with a graphical user interface fo
 - **CTF-Ready** - Specialized tools for CTF challenges: flag detection, credential extraction, text analysis
 - **Text & Payload Extraction** - Extract and search all text content from packets with regex support
 - **Decoder/Encoder Tools** - Base64, Hex, URL, ROT13, XOR decoding and encoding utilities
-- **Anomaly Detection** - Automatic detection of port scans, SYN floods, DNS tunneling, and more
-- **File Extraction** - Recover files from HTTP, FTP, and SMTP traffic
-- **Rich Visualizations** - 6+ chart types for traffic analysis
+- **Enhanced File Extraction** - Optimized recovery of files from HTTP, FTP, and SMTP traffic with duplicate detection and hash verification
 - **Dual Interface** - Both GUI and command-line modes
 - **Comprehensive Reports** - Auto-generated HTML/text reports
 - **Security Focused** - 0 vulnerabilities, code review passed
@@ -47,10 +45,9 @@ For detailed instructions, see [QUICKSTART.md](QUICKSTART.md)
 ### Core Features
 - **File Parsing**: Support for both PCAP and PCAPNG file formats
 - **Packet Dissection**: Layer-by-layer analysis (Link, Network, Transport, Application)
-- **Connection Tracking**: TCP/UDP flow analysis with detailed statistics
-- **File Extraction**: Extract embedded files from HTTP, FTP, SMTP traffic
+- **Enhanced File Extraction**: Extract embedded files from HTTP, FTP, SMTP traffic with improved performance, duplicate detection, and hash verification (MD5/SHA256)
 - **Search & Filtering**: Filter packets by protocol, IP, port, or keywords
-- **Statistics**: Protocol distribution, top talkers, bandwidth analysis
+- **Statistics**: Protocol distribution, top talkers, top ports, bandwidth analysis
 - **Export**: CSV, JSON, and filtered PCAP export
 
 ### CTF & Forensics Features
@@ -65,13 +62,10 @@ For detailed instructions, see [QUICKSTART.md](QUICKSTART.md)
 - **Entropy Analysis**: Detect encrypted or compressed data
 
 ### Advanced Features
-- **Visualization**: Traffic timelines, flow graphs, protocol distribution charts
-- **Anomaly Detection**: Port scans, unusual patterns, suspicious activities
 - **Protocol Decoders**: HTTP, DNS, TLS, FTP, SMTP, DHCP, SIP, and more
 - **Batch Processing**: Analyze multiple files simultaneously
-- **Report Generation**: Automated PDF/HTML reports
-- **Theme Support**: Dark and light mode
-- **Performance**: Multi-threaded processing for large files
+- **Report Generation**: Automated HTML/text reports
+- **Performance**: Optimized processing for large files
 - **Stream Reconstruction**: Reassemble TCP streams for analysis
 
 ## 📚 Documentation
@@ -84,18 +78,6 @@ For detailed instructions, see [QUICKSTART.md](QUICKSTART.md)
 - **[Final Summary](FINAL_SUMMARY.md)** - Project completion report
 
 ## 🎯 Key Features Showcase
-
-### Anomaly Detection
-```bash
-python pcap_analyzer.py -f capture.pcap --detect-anomalies
-```
-Detects:
-- Port scans (threshold-based)
-- SYN flood attacks
-- DNS tunneling attempts
-- Unencrypted credentials
-- Suspicious ports
-- Unusual packet sizes
 
 ### CTF Challenge Analysis
 Perfect for CTF competitions and forensics challenges!
@@ -126,26 +108,18 @@ python pcap_analyzer.py
 
 See [CTF Guide](docs/CTF_GUIDE.md) for detailed walkthrough!
 
-### File Extraction
+### Enhanced File Extraction
 ```bash
 python pcap_analyzer.py -f capture.pcap --extract-files
 ```
-Extracts:
-- HTTP downloads
+Features:
+- HTTP downloads with improved multi-packet reassembly
 - FTP transfers
 - Email attachments
-- Auto-categorized by type
-
-### Visualization
-```bash
-python pcap_analyzer.py -f capture.pcap --visualize
-```
-Creates:
-- Protocol distribution charts
-- Traffic timelines
-- Top talkers graphs
-- Packet size distributions
-- Connection diagrams
+- Duplicate detection using SHA256 hashing
+- MD5 and SHA256 hash verification for all extracted files
+- Better filename sanitization and metadata preservation
+- Auto-categorized by content type
 
 ### Comprehensive Reports
 ```bash
@@ -153,7 +127,7 @@ python pcap_analyzer.py -f capture.pcap --report analysis.html
 ```
 Includes:
 - Complete statistics
-- Connection analysis
+- Protocol distribution analysis
 - Security findings
 - Charts and graphs
 
@@ -204,22 +178,17 @@ pcapanalyze/
 ├── core/                      # Core analysis modules
 │   ├── parser.py             # PCAP/PCAPNG file parser
 │   ├── dissector.py          # Packet dissection
-│   ├── connection_tracker.py # Flow analysis
-│   ├── file_extractor.py     # File extraction
+│   ├── file_extractor.py     # Enhanced file extraction with duplicate detection
+│   ├── text_extractor.py     # Text and payload extraction
 │   └── statistics.py         # Statistics generation
 ├── gui/                       # GUI modules
-│   ├── main_window.py        # Main GUI window
-│   ├── packet_view.py        # Packet list and details
-│   ├── connection_view.py    # Connection viewer
-│   ├── stats_view.py         # Statistics and charts
-│   └── file_view.py          # Extracted files viewer
+│   └── main_window.py        # Main GUI window with tabbed interface
 ├── analysis/                  # Advanced analysis
-│   ├── anomaly_detector.py   # Anomaly detection
-│   ├── protocol_decoders.py  # Protocol-specific decoders
-│   └── visualizer.py         # Traffic visualization
+│   └── protocol_decoders.py  # Protocol-specific decoders
 ├── utils/                     # Utilities
 │   ├── filters.py            # Filtering and search
 │   ├── exporters.py          # Export functionality
+│   ├── ctf_utils.py          # CTF challenge utilities
 │   └── logger.py             # Logging utilities
 ├── tests/                     # Test suite
 ├── samples/                   # Sample PCAP files
