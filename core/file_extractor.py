@@ -51,25 +51,6 @@ class FileExtractor:
             return True
         self.file_hashes.add(file_hash)
         return False
-            os.makedirs(output_dir)
-    
-    def extract_files(self, packets: List) -> List[Dict[str, Any]]:
-        """Extract all files from packet list"""
-        logger.info("Extracting files from packets...")
-        
-        self.extracted_files = []
-        
-        # Extract HTTP files
-        self.extracted_files.extend(self._extract_http_files(packets))
-        
-        # Extract FTP files
-        self.extracted_files.extend(self._extract_ftp_files(packets))
-        
-        # Extract SMTP attachments
-        self.extracted_files.extend(self._extract_smtp_files(packets))
-        
-        logger.info(f"Extracted {len(self.extracted_files)} files")
-        return self.extracted_files
     
     def _extract_http_files(self, packets: List) -> List[Dict[str, Any]]:
         """Extract files from HTTP traffic with improved session reconstruction"""
