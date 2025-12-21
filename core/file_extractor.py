@@ -1,21 +1,56 @@
 """
 File extraction module
 Extracts embedded files from network traffic (HTTP, FTP, SMTP, etc.)
+Enhanced with better performance and additional features
 """
 import os
 import re
-from typing import List, Dict, Any
+import hashlib
+from typing import List, Dict, Any, Set
 from scapy.all import TCP, Raw
 from utils.logger import logger
 
 class FileExtractor:
-    """Extract files from packet captures"""
+    """Extract files from packet captures with enhanced performance"""
     
     def __init__(self, output_dir: str = "extracted_files"):
         self.output_dir = output_dir
         self.extracted_files = []
+        self.file_hashes: Set[str] = set()  # Track duplicates
         
         if not os.path.exists(output_dir):
+            os.makedirs(output_dir)
+    
+    def extract_files(self, packets: List) -> List[Dict[str, Any]]:
+        """Extract all files from packet list with optimizations"""
+        logger.info("Extracting files from packets...")
+        
+        self.extracted_files = []
+        self.file_hashes = set()
+        
+        # Extract HTTP files (optimized)
+        self.extracted_files.extend(self._extract_http_files(packets))
+        
+        # Extract FTP files
+        self.extracted_files.extend(self._extract_ftp_files(packets))
+        
+        # Extract SMTP attachments
+        self.extracted_files.extend(self._extract_smtp_files(packets))
+        
+        logger.info(f"Extracted {len(self.extracted_files)} files")
+        return self.extracted_files
+    
+    def _calculate_hash(self, data: bytes) -> str:
+        """Calculate SHA256 hash of data for duplicate detection"""
+        return hashlib.sha256(data).hexdigest()
+    
+    def _is_duplicate(self, data: bytes) -> bool:
+        """Check if file content is a duplicate"""
+        file_hash = self._calculate_hash(data)
+        if file_hash in self.file_hashes:
+            return True
+        self.file_hashes.add(file_hash)
+        return False
             os.makedirs(output_dir)
     
     def extract_files(self, packets: List) -> List[Dict[str, Any]]:
@@ -37,54 +72,95 @@ class FileExtractor:
         return self.extracted_files
     
     def _extract_http_files(self, packets: List) -> List[Dict[str, Any]]:
-        """Extract files from HTTP traffic"""
+        """Extract files from HTTP traffic with improved session reconstruction"""
         files = []
         http_sessions = self._reconstruct_http_sessions(packets)
         
         for session in http_sessions:
-            if session.get('has_body', False):
-                file_info = self._save_http_file(session)
-                if file_info:
-                    files.append(file_info)
+            if session.get('has_body', False) and len(session['response'].get('body', b'')) > 0:
+                # Skip duplicates
+                body = session['response']['body']
+                if not self._is_duplicate(body):
+                    file_info = self._save_http_file(session)
+                    if file_info:
+                        files.append(file_info)
         
         return files
     
     def _reconstruct_http_sessions(self, packets: List) -> List[Dict[str, Any]]:
-        """Reconstruct HTTP sessions from packets"""
+        """Reconstruct HTTP sessions from packets with better buffering"""
         sessions = []
         current_request = None
-        current_response = None
+        response_buffer = {}  # Buffer for multi-packet responses
         
         for pkt in packets:
             if not (pkt.haslayer(TCP) and pkt.haslayer(Raw)):
                 continue
             
-            payload = bytes(pkt[Raw]).decode('utf-8', errors='replace')
+            try:
+                payload = bytes(pkt[Raw]).decode('utf-8', errors='replace')
+            except:
+                continue
             
             # HTTP Request
             if any(method in payload[:50] for method in ['GET ', 'POST ', 'PUT ', 'DELETE ', 'HEAD ']):
-                if current_request and current_response:
-                    sessions.append({
-                        'request': current_request,
-                        'response': current_response
-                    })
+                if current_request:
+                    # Save previous session if exists
+                    if current_request.get('stream_id') in response_buffer:
+                        response = response_buffer[current_request['stream_id']]
+                        sessions.append({
+                            'request': current_request,
+                            'response': response,
+                            'has_body': len(response.get('body', b'')) > 0
+                        })
+                        del response_buffer[current_request['stream_id']]
                 
                 current_request = self._parse_http_request(payload, pkt)
-                current_response = None
+                # Create stream identifier
+                if pkt.haslayer(TCP):
+                    stream_id = f"{pkt['IP'].src}:{pkt['TCP'].sport}-{pkt['IP'].dst}:{pkt['TCP'].dport}"
+                    current_request['stream_id'] = stream_id
             
             # HTTP Response
             elif payload.startswith('HTTP/'):
-                current_response = self._parse_http_response(payload, pkt)
+                response = self._parse_http_response(payload, pkt)
                 
-                if current_request and current_response:
-                    session = {
-                        'request': current_request,
-                        'response': current_response,
-                        'has_body': len(current_response.get('body', b'')) > 0
-                    }
-                    sessions.append(session)
-                    current_request = None
-                    current_response = None
+                if current_request:
+                    stream_id = current_request.get('stream_id')
+                    if stream_id:
+                        # Check if this is a continuation or new response
+                        if stream_id not in response_buffer:
+                            response_buffer[stream_id] = response
+                        else:
+                            # Append body if continuation
+                            response_buffer[stream_id]['body'] += response.get('body', b'')
+                        
+                        # Check if response is complete (heuristic)
+                        content_length = response.get('headers', {}).get('Content-Length')
+                        if content_length:
+                            try:
+                                expected_len = int(content_length)
+                                actual_len = len(response_buffer[stream_id]['body'])
+                                if actual_len >= expected_len:
+                                    # Response complete
+                                    sessions.append({
+                                        'request': current_request,
+                                        'response': response_buffer[stream_id],
+                                        'has_body': len(response_buffer[stream_id]['body']) > 0
+                                    })
+                                    del response_buffer[stream_id]
+                                    current_request = None
+                            except:
+                                pass
+        
+        # Flush remaining buffered responses
+        for stream_id, response in response_buffer.items():
+            # Try to find matching request
+            sessions.append({
+                'request': current_request if current_request and current_request.get('stream_id') == stream_id else {},
+                'response': response,
+                'has_body': len(response.get('body', b'')) > 0
+            })
         
         return sessions
     
@@ -134,10 +210,15 @@ class FileExtractor:
         }
     
     def _save_http_file(self, session: Dict[str, Any]) -> Dict[str, Any]:
-        """Save HTTP response body as a file"""
+        """Save HTTP response body as a file with enhanced metadata"""
         try:
             response = session['response']
             request = session['request']
+            body = response['body']
+            
+            # Skip empty files
+            if len(body) == 0:
+                return None
             
             # Get filename from URI or Content-Disposition
             filename = self._extract_filename(request.get('uri', ''), 
@@ -148,6 +229,9 @@ class FileExtractor:
                 content_type = response.get('headers', {}).get('Content-Type', 'unknown')
                 ext = self._get_extension_from_content_type(content_type)
                 filename = f"http_file_{len(self.extracted_files) + 1}{ext}"
+            
+            # Sanitize filename
+            filename = self._sanitize_filename(filename)
             
             # Save file
             filepath = os.path.join(self.output_dir, filename)
@@ -160,21 +244,44 @@ class FileExtractor:
                 counter += 1
             
             with open(filepath, 'wb') as f:
-                f.write(response['body'])
+                f.write(body)
+            
+            # Calculate file hashes for verification
+            md5_hash = hashlib.md5(body).hexdigest()
+            sha256_hash = self._calculate_hash(body)
             
             return {
                 'filename': os.path.basename(filepath),
                 'filepath': filepath,
-                'size': len(response['body']),
+                'size': len(body),
                 'source': 'HTTP',
                 'content_type': response.get('headers', {}).get('Content-Type', 'unknown'),
                 'uri': request.get('uri', ''),
-                'time': response.get('time', 0)
+                'time': response.get('time', 0),
+                'md5': md5_hash,
+                'sha256': sha256_hash,
+                'status_code': response.get('status_code', ''),
+                'method': request.get('method', '')
             }
         
         except Exception as e:
             logger.error(f"Error saving HTTP file: {e}")
             return None
+    
+    def _sanitize_filename(self, filename: str) -> str:
+        """Sanitize filename to remove dangerous characters"""
+        # Remove path separators and dangerous characters
+        dangerous_chars = ['/', '\\', '..', '\x00', '<', '>', ':', '"', '|', '?', '*']
+        sanitized = filename
+        for char in dangerous_chars:
+            sanitized = sanitized.replace(char, '_')
+        
+        # Limit length
+        if len(sanitized) > 200:
+            name, ext = os.path.splitext(sanitized)
+            sanitized = name[:190] + ext
+        
+        return sanitized
     
     def _extract_filename(self, uri: str, headers: Dict[str, str]) -> str:
         """Extract filename from URI or headers"""
