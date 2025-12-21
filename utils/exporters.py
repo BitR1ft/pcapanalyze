@@ -7,6 +7,9 @@ from typing import List, Dict, Any
 from datetime import datetime
 import os
 
+# Constants
+TOP_ITEMS_LIMIT = 20  # Maximum number of items to show in reports
+
 class Exporter:
     """Export analysis results to various formats"""
     
@@ -117,7 +120,7 @@ class ReportGenerator:
                             f.write(f"  {sub_key}: {sub_value}\n")
                     elif isinstance(value, list):
                         f.write(f"\n{key}:\n")
-                        for item in value[:20]:  # Limit to top 20
+                        for item in value[:TOP_ITEMS_LIMIT]:
                             if isinstance(item, dict):
                                 f.write(f"  {item}\n")
                     else:
@@ -169,7 +172,7 @@ class ReportGenerator:
                     for sub_key, sub_value in value.items():
                         stats_rows += f"<tr><td>{key}</td><td>{sub_key}</td><td>{sub_value}</td></tr>\n"
                 elif isinstance(value, list):
-                    for item in value[:20]:  # Top 20
+                    for item in value[:TOP_ITEMS_LIMIT]:
                         if isinstance(item, dict):
                             stats_rows += f"<tr><td>{key}</td><td></td><td>{item}</td></tr>\n"
                 else:

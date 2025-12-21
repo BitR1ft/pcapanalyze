@@ -99,7 +99,7 @@ class FileExtractor:
                 current_request = self._parse_http_request(payload, pkt)
                 # Create stream identifier
                 if pkt.haslayer(TCP):
-                    stream_id = f"{pkt['IP'].src}:{pkt['TCP'].sport}-{pkt['IP'].dst}:{pkt['TCP'].dport}"
+                    stream_id = f"{pkt.IP.src}:{pkt.TCP.sport}-{pkt.IP.dst}:{pkt.TCP.dport}"
                     current_request['stream_id'] = stream_id
             
             # HTTP Response
@@ -251,8 +251,9 @@ class FileExtractor:
     
     def _sanitize_filename(self, filename: str) -> str:
         """Sanitize filename to remove dangerous characters"""
-        # Remove path separators and dangerous characters
-        dangerous_chars = ['/', '\\', '..', '\x00', '<', '>', ':', '"', '|', '?', '*']
+        # Remove path separators and dangerous characters including shell metacharacters
+        dangerous_chars = ['/', '\\', '..', '\x00', '<', '>', ':', '"', '|', '?', '*', 
+                          ';', '&', '$', '`', '(', ')', '[', ']', '{', '}', '\n', '\r']
         sanitized = filename
         for char in dangerous_chars:
             sanitized = sanitized.replace(char, '_')
@@ -262,6 +263,7 @@ class FileExtractor:
             name, ext = os.path.splitext(sanitized)
             sanitized = name[:190] + ext
         
+        return sanitized
         return sanitized
     
     def _extract_filename(self, uri: str, headers: Dict[str, str]) -> str:

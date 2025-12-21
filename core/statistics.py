@@ -125,8 +125,8 @@ class StatisticsGenerator:
         
         for pkt in packets:
             if hasattr(pkt, 'IP'):
-                src_ip = pkt['IP'].src
-                dst_ip = pkt['IP'].dst
+                src_ip = pkt.IP.src
+                dst_ip = pkt.IP.dst
                 pkt_len = len(pkt)
                 
                 ip_stats[src_ip]['bytes_sent'] += pkt_len
@@ -156,8 +156,8 @@ class StatisticsGenerator:
             pkt_len = len(pkt)
             
             if hasattr(pkt, 'TCP'):
-                src_port = pkt['TCP'].sport
-                dst_port = pkt['TCP'].dport
+                src_port = pkt.TCP.sport
+                dst_port = pkt.TCP.dport
                 
                 # Count both source and destination ports
                 port_stats[src_port]['packets'] += 1
@@ -166,8 +166,8 @@ class StatisticsGenerator:
                 port_stats[dst_port]['bytes'] += pkt_len
                 
             elif hasattr(pkt, 'UDP'):
-                src_port = pkt['UDP'].sport
-                dst_port = pkt['UDP'].dport
+                src_port = pkt.UDP.sport
+                dst_port = pkt.UDP.dport
                 
                 port_stats[src_port]['packets'] += 1
                 port_stats[src_port]['bytes'] += pkt_len
