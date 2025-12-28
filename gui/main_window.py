@@ -19,12 +19,9 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from core.parser import PCAPParser
 from core.dissector import PacketDissector
-from core.connection_tracker import ConnectionTracker
 from core.file_extractor import FileExtractor
 from core.text_extractor import TextExtractor
 from core.statistics import StatisticsGenerator
-from analysis.anomaly_detector import AnomalyDetector
-from analysis.visualizer import TrafficVisualizer
 from utils.logger import logger
 from utils.filters import PacketFilter
 from utils.exporters import Exporter, ReportGenerator
@@ -55,29 +52,19 @@ class AnalysisThread(QThread):
             
             self.progress.emit(30, f"Analyzing {len(packets)} packets...")
             
-            # Analyze connections
-            tracker = ConnectionTracker()
-            connections = tracker.analyze_connections(packets)
-            
             self.progress.emit(50, "Generating statistics...")
             
             # Generate statistics
             stats_gen = StatisticsGenerator()
-            stats = stats_gen.generate_statistics(packets, connections)
+            stats = stats_gen.generate_statistics(packets)
             
-            self.progress.emit(70, "Detecting anomalies...")
-            
-            # Detect anomalies
-            detector = AnomalyDetector()
-            anomalies = detector.detect_anomalies(packets, connections)
-            
-            self.progress.emit(90, "Extracting files...")
+            self.progress.emit(70, "Extracting files...")
             
             # Extract files
             extractor = FileExtractor()
             extracted_files = extractor.extract_files(packets)
             
-            self.progress.emit(95, "Extracting text and payloads...")
+            self.progress.emit(90, "Extracting text and payloads...")
             
             # Extract text content
             text_extractor = TextExtractor()
@@ -90,9 +77,7 @@ class AnalysisThread(QThread):
                 'parser': parser,
                 'packets': packets,
                 'file_info': file_info,
-                'connections': connections,
                 'statistics': stats,
-                'anomalies': anomalies,
                 'extracted_files': extracted_files,
                 'text_data': text_data,
                 'text_extractor': text_extractor
@@ -111,14 +96,11 @@ class PCAPAnalyzerGUI(QMainWindow):
         super().__init__()
         self.current_file = None
         self.packets = []
-        self.connections = []
         self.statistics = {}
-        self.anomalies = []
         self.extracted_files = []
         self.text_data = {}
         self.text_extractor = None
         self.parser = None
-        self.current_theme = 'light'
         
         self.init_ui()
     
@@ -168,17 +150,9 @@ class PCAPAnalyzerGUI(QMainWindow):
         self.packets_tab = self.create_packets_tab()
         self.tabs.addTab(self.packets_tab, "Packets")
         
-        # Connections tab
-        self.connections_tab = self.create_connections_tab()
-        self.tabs.addTab(self.connections_tab, "Connections")
-        
         # Statistics tab
         self.statistics_tab = self.create_statistics_tab()
         self.tabs.addTab(self.statistics_tab, "Statistics")
-        
-        # Anomalies tab
-        self.anomalies_tab = self.create_anomalies_tab()
-        self.tabs.addTab(self.anomalies_tab, "Anomalies")
         
         # Extracted Files tab
         self.files_tab = self.create_files_tab()
@@ -226,10 +200,6 @@ class PCAPAnalyzerGUI(QMainWindow):
         export_packets_action.triggered.connect(self.export_packets)
         export_menu.addAction(export_packets_action)
         
-        export_connections_action = QAction('Export Connections to CSV', self)
-        export_connections_action.triggered.connect(self.export_connections)
-        export_menu.addAction(export_connections_action)
-        
         export_stats_action = QAction('Export Statistics to CSV', self)
         export_stats_action.triggered.connect(self.export_statistics)
         export_menu.addAction(export_stats_action)
@@ -241,25 +211,8 @@ class PCAPAnalyzerGUI(QMainWindow):
         exit_action.triggered.connect(self.close)
         file_menu.addAction(exit_action)
         
-        # View menu
-        view_menu = menubar.addMenu('View')
-        
-        theme_menu = view_menu.addMenu('Theme')
-        
-        light_theme_action = QAction('Light Theme', self)
-        light_theme_action.triggered.connect(lambda: self.change_theme('light'))
-        theme_menu.addAction(light_theme_action)
-        
-        dark_theme_action = QAction('Dark Theme', self)
-        dark_theme_action.triggered.connect(lambda: self.change_theme('dark'))
-        theme_menu.addAction(dark_theme_action)
-        
         # Analysis menu
         analysis_menu = menubar.addMenu('Analysis')
-        
-        visualize_action = QAction('Create Visualizations', self)
-        visualize_action.triggered.connect(self.create_visualizations)
-        analysis_menu.addAction(visualize_action)
         
         report_action = QAction('Generate Report', self)
         report_action.triggered.connect(self.generate_report)
@@ -306,21 +259,6 @@ class PCAPAnalyzerGUI(QMainWindow):
         layout.addWidget(splitter)
         return widget
     
-    def create_connections_tab(self):
-        """Create connections view"""
-        widget = QWidget()
-        layout = QVBoxLayout(widget)
-        
-        self.connections_table = QTableWidget()
-        self.connections_table.setColumnCount(10)
-        self.connections_table.setHorizontalHeaderLabels([
-            'Source IP', 'Source Port', 'Destination IP', 'Destination Port',
-            'Protocol', 'Packets', 'Bytes', 'Duration', 'State', 'Anomalies'
-        ])
-        layout.addWidget(self.connections_table)
-        
-        return widget
-    
     def create_statistics_tab(self):
         """Create statistics view"""
         widget = QWidget()
@@ -329,18 +267,6 @@ class PCAPAnalyzerGUI(QMainWindow):
         self.statistics_text = QTextEdit()
         self.statistics_text.setReadOnly(True)
         layout.addWidget(self.statistics_text)
-        
-        return widget
-    
-    def create_anomalies_tab(self):
-        """Create anomalies view"""
-        widget = QWidget()
-        layout = QVBoxLayout(widget)
-        
-        self.anomalies_table = QTableWidget()
-        self.anomalies_table.setColumnCount(4)
-        self.anomalies_table.setHorizontalHeaderLabels(['Type', 'Severity', 'Description', 'Details'])
-        layout.addWidget(self.anomalies_table)
         
         return widget
     
@@ -527,18 +453,14 @@ class PCAPAnalyzerGUI(QMainWindow):
         """Handle analysis completion"""
         self.parser = results['parser']
         self.packets = results['packets']
-        self.connections = results['connections']
         self.statistics = results['statistics']
-        self.anomalies = results['anomalies']
         self.extracted_files = results['extracted_files']
         self.text_data = results.get('text_data', {})
         self.text_extractor = results.get('text_extractor')
         
         # Update all views
         self.update_packet_list()
-        self.update_connections_view()
         self.update_statistics_view()
-        self.update_anomalies_view()
         self.update_files_view()
         self.update_text_view()
         
@@ -568,24 +490,6 @@ class PCAPAnalyzerGUI(QMainWindow):
         
         self.packet_table.resizeColumnsToContents()
     
-    def update_connections_view(self):
-        """Update connections table"""
-        self.connections_table.setRowCount(len(self.connections))
-        
-        for i, conn in enumerate(self.connections):
-            self.connections_table.setItem(i, 0, QTableWidgetItem(conn['src_ip']))
-            self.connections_table.setItem(i, 1, QTableWidgetItem(str(conn['src_port'])))
-            self.connections_table.setItem(i, 2, QTableWidgetItem(conn['dst_ip']))
-            self.connections_table.setItem(i, 3, QTableWidgetItem(str(conn['dst_port'])))
-            self.connections_table.setItem(i, 4, QTableWidgetItem(conn['protocol']))
-            self.connections_table.setItem(i, 5, QTableWidgetItem(str(conn['packets'])))
-            self.connections_table.setItem(i, 6, QTableWidgetItem(str(conn['bytes_total'])))
-            self.connections_table.setItem(i, 7, QTableWidgetItem(f"{conn['duration']:.2f}s"))
-            self.connections_table.setItem(i, 8, QTableWidgetItem(conn['state']))
-            self.connections_table.setItem(i, 9, QTableWidgetItem(str(conn['anomalies'])))
-        
-        self.connections_table.resizeColumnsToContents()
-    
     def update_statistics_view(self):
         """Update statistics view"""
         text = "NETWORK TRAFFIC STATISTICS\n"
@@ -614,27 +518,6 @@ class PCAPAnalyzerGUI(QMainWindow):
             text += "\n"
         
         self.statistics_text.setText(text)
-    
-    def update_anomalies_view(self):
-        """Update anomalies table"""
-        self.anomalies_table.setRowCount(len(self.anomalies))
-        
-        for i, anomaly in enumerate(self.anomalies):
-            self.anomalies_table.setItem(i, 0, QTableWidgetItem(anomaly['type']))
-            
-            severity_item = QTableWidgetItem(anomaly['severity'])
-            if anomaly['severity'] == 'CRITICAL':
-                severity_item.setBackground(QColor(255, 200, 200))
-            elif anomaly['severity'] == 'HIGH':
-                severity_item.setBackground(QColor(255, 230, 200))
-            elif anomaly['severity'] == 'MEDIUM':
-                severity_item.setBackground(QColor(255, 255, 200))
-            self.anomalies_table.setItem(i, 1, severity_item)
-            
-            self.anomalies_table.setItem(i, 2, QTableWidgetItem(anomaly['description']))
-            self.anomalies_table.setItem(i, 3, QTableWidgetItem(str(anomaly.get('details', ''))))
-        
-        self.anomalies_table.resizeColumnsToContents()
     
     def update_files_view(self):
         """Update extracted files table"""
@@ -718,17 +601,6 @@ class PCAPAnalyzerGUI(QMainWindow):
             Exporter.export_packets_to_csv(self.packets, filename)
             QMessageBox.information(self, 'Success', f'Packets exported to {filename}')
     
-    def export_connections(self):
-        """Export connections to CSV"""
-        if not self.connections:
-            QMessageBox.warning(self, 'Warning', 'No connections available')
-            return
-        
-        filename, _ = QFileDialog.getSaveFileName(self, 'Export Connections', '', 'CSV Files (*.csv)')
-        if filename:
-            Exporter.export_connections_to_csv(self.connections, filename)
-            QMessageBox.information(self, 'Success', f'Connections exported to {filename}')
-    
     def export_statistics(self):
         """Export statistics to CSV"""
         if not self.statistics:
@@ -739,21 +611,6 @@ class PCAPAnalyzerGUI(QMainWindow):
         if filename:
             Exporter.export_statistics_to_csv(self.statistics, filename)
             QMessageBox.information(self, 'Success', f'Statistics exported to {filename}')
-    
-    def create_visualizations(self):
-        """Create traffic visualizations"""
-        if not self.packets:
-            QMessageBox.warning(self, 'Warning', 'No packets loaded')
-            return
-        
-        visualizer = TrafficVisualizer()
-        viz_files = visualizer.create_all_visualizations(self.packets, self.connections, self.statistics)
-        
-        msg = f"Created {len(viz_files)} visualizations:\n\n"
-        for name, path in viz_files.items():
-            msg += f"{name}: {path}\n"
-        
-        QMessageBox.information(self, 'Visualizations Created', msg)
     
     def generate_report(self):
         """Generate analysis report"""
@@ -770,9 +627,9 @@ class PCAPAnalyzerGUI(QMainWindow):
         
         if filename:
             if filename.endswith('.html'):
-                ReportGenerator.generate_html_report(self.statistics, self.connections, filename)
+                ReportGenerator.generate_html_report(self.statistics, filename)
             else:
-                ReportGenerator.generate_text_report(self.statistics, self.connections, filename)
+                ReportGenerator.generate_text_report(self.statistics, filename)
             
             QMessageBox.information(self, 'Success', f'Report generated: {filename}')
     
@@ -1043,21 +900,6 @@ class PCAPAnalyzerGUI(QMainWindow):
         
         except Exception as e:
             QMessageBox.critical(self, 'Error', f'XOR analysis error: {e}')
-    
-    def change_theme(self, theme):
-        """Change application theme"""
-        self.current_theme = theme
-        
-        if theme == 'dark':
-            self.setStyleSheet("""
-                QMainWindow, QWidget { background-color: #2b2b2b; color: #ffffff; }
-                QTableWidget, QTextEdit, QTreeWidget { background-color: #3c3c3c; color: #ffffff; }
-                QTableWidget::item:selected { background-color: #4a4a4a; }
-                QMenuBar, QMenu { background-color: #2b2b2b; color: #ffffff; }
-                QMenuBar::item:selected, QMenu::item:selected { background-color: #4a4a4a; }
-            """)
-        else:
-            self.setStyleSheet("")
     
     def show_about(self):
         """Show about dialog"""

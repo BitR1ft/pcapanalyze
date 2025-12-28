@@ -12,16 +12,15 @@ class StatisticsGenerator:
     def __init__(self):
         self.stats = {}
     
-    def generate_statistics(self, packets: List, connections: List[Dict]) -> Dict[str, Any]:
+    def generate_statistics(self, packets: List) -> Dict[str, Any]:
         """Generate comprehensive statistics"""
         logger.info("Generating statistics...")
         
         self.stats = {
             'general': self._general_stats(packets),
             'protocols': self._protocol_stats(packets),
-            'top_talkers': self._top_talkers(connections),
-            'top_services': self._top_services(connections),
-            'bandwidth': self._bandwidth_stats(connections),
+            'top_talkers': self._top_talkers_from_packets(packets),
+            'top_ports': self._top_ports_from_packets(packets),
             'packet_sizes': self._packet_size_stats(packets),
             'time_distribution': self._time_distribution(packets)
         }
@@ -120,21 +119,20 @@ class StatisticsGenerator:
         
         return protocol_distribution
     
-    def _top_talkers(self, connections: List[Dict]) -> List[Dict[str, Any]]:
-        """Identify top IP addresses by traffic volume"""
-        ip_stats = defaultdict(lambda: {'bytes_sent': 0, 'bytes_recv': 0, 'connections': 0})
+    def _top_talkers_from_packets(self, packets: List) -> List[Dict[str, Any]]:
+        """Identify top IP addresses by traffic volume from packets"""
+        ip_stats = defaultdict(lambda: {'bytes_sent': 0, 'bytes_recv': 0, 'packets': 0})
         
-        for conn in connections:
-            src_ip = conn['src_ip']
-            dst_ip = conn['dst_ip']
-            
-            ip_stats[src_ip]['bytes_sent'] += conn['bytes_sent']
-            ip_stats[src_ip]['bytes_recv'] += conn['bytes_recv']
-            ip_stats[src_ip]['connections'] += 1
-            
-            ip_stats[dst_ip]['bytes_sent'] += conn['bytes_recv']
-            ip_stats[dst_ip]['bytes_recv'] += conn['bytes_sent']
-            ip_stats[dst_ip]['connections'] += 1
+        for pkt in packets:
+            if hasattr(pkt, 'IP'):
+                src_ip = pkt.IP.src
+                dst_ip = pkt.IP.dst
+                pkt_len = len(pkt)
+                
+                ip_stats[src_ip]['bytes_sent'] += pkt_len
+                ip_stats[src_ip]['packets'] += 1
+                
+                ip_stats[dst_ip]['bytes_recv'] += pkt_len
         
         # Convert to list and sort
         top_talkers = []
@@ -144,39 +142,50 @@ class StatisticsGenerator:
                 'total_bytes': stats['bytes_sent'] + stats['bytes_recv'],
                 'bytes_sent': stats['bytes_sent'],
                 'bytes_recv': stats['bytes_recv'],
-                'connections': stats['connections']
+                'packets': stats['packets']
             })
         
         top_talkers.sort(key=lambda x: x['total_bytes'], reverse=True)
         return top_talkers[:20]  # Top 20
     
-    def _top_services(self, connections: List[Dict]) -> List[Dict[str, Any]]:
-        """Identify most used services/ports"""
-        port_stats = defaultdict(lambda: {'connections': 0, 'bytes': 0})
+    def _top_ports_from_packets(self, packets: List) -> List[Dict[str, Any]]:
+        """Identify most used ports from packets"""
+        port_stats = defaultdict(lambda: {'packets': 0, 'bytes': 0})
         
-        for conn in connections:
-            src_port = conn['src_port']
-            dst_port = conn['dst_port']
-            total_bytes = conn['bytes_total']
+        for pkt in packets:
+            pkt_len = len(pkt)
             
-            # Typically server ports are < 1024 or well-known
-            server_port = dst_port if dst_port < 1024 or dst_port in [3306, 5432, 6379, 8080, 8443] else src_port
-            
-            port_stats[server_port]['connections'] += 1
-            port_stats[server_port]['bytes'] += total_bytes
+            if hasattr(pkt, 'TCP'):
+                src_port = pkt.TCP.sport
+                dst_port = pkt.TCP.dport
+                
+                # Count both source and destination ports
+                port_stats[src_port]['packets'] += 1
+                port_stats[src_port]['bytes'] += pkt_len
+                port_stats[dst_port]['packets'] += 1
+                port_stats[dst_port]['bytes'] += pkt_len
+                
+            elif hasattr(pkt, 'UDP'):
+                src_port = pkt.UDP.sport
+                dst_port = pkt.UDP.dport
+                
+                port_stats[src_port]['packets'] += 1
+                port_stats[src_port]['bytes'] += pkt_len
+                port_stats[dst_port]['packets'] += 1
+                port_stats[dst_port]['bytes'] += pkt_len
         
         # Convert to list and add port names
-        top_services = []
+        top_ports = []
         for port, stats in port_stats.items():
-            top_services.append({
+            top_ports.append({
                 'port': port,
                 'service': self._get_service_name(port),
-                'connections': stats['connections'],
+                'packets': stats['packets'],
                 'bytes': stats['bytes']
             })
         
-        top_services.sort(key=lambda x: x['bytes'], reverse=True)
-        return top_services[:20]  # Top 20
+        top_ports.sort(key=lambda x: x['bytes'], reverse=True)
+        return top_ports[:20]  # Top 20
     
     def _get_service_name(self, port: int) -> str:
         """Get common service name for port"""
@@ -200,26 +209,6 @@ class StatisticsGenerator:
             8443: 'HTTPS-Alt'
         }
         return services.get(port, f'Port-{port}')
-    
-    def _bandwidth_stats(self, connections: List[Dict]) -> Dict[str, Any]:
-        """Calculate bandwidth statistics"""
-        if not connections:
-            return {}
-        
-        total_bytes = sum(conn['bytes_total'] for conn in connections)
-        total_duration = sum(conn['duration'] for conn in connections)
-        
-        tcp_bytes = sum(conn['bytes_total'] for conn in connections if conn['protocol'] == 'TCP')
-        udp_bytes = sum(conn['bytes_total'] for conn in connections if conn['protocol'] == 'UDP')
-        
-        return {
-            'total_bytes': total_bytes,
-            'tcp_bytes': tcp_bytes,
-            'udp_bytes': udp_bytes,
-            'tcp_percentage': (tcp_bytes / total_bytes * 100) if total_bytes > 0 else 0,
-            'udp_percentage': (udp_bytes / total_bytes * 100) if total_bytes > 0 else 0,
-            'average_bandwidth': total_bytes / total_duration if total_duration > 0 else 0
-        }
     
     def _packet_size_stats(self, packets: List) -> Dict[str, Any]:
         """Analyze packet size distribution"""
